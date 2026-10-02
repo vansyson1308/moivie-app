@@ -193,7 +193,8 @@ export function ambience(kind: Ambience, seconds: number, seed = 7): Float32Arra
   return [left, right];
 }
 
-export interface Clip { samples: Float32Array[]; start: number; gain: number; fade?: number; voice?: boolean }
+/** pan: −1 trái … +1 phải, chỉ áp cho nguồn mono (luật công suất không đổi). */
+export interface Clip { samples: Float32Array[]; start: number; gain: number; fade?: number; voice?: boolean; pan?: number; /** false: không tự hạ khi có thoại (vang, tiếng động). */ duck?: boolean }
 
 /** Trộn mọi lớp tiếng: thoại ở giữa, nhạc tự hạ khi có thoại (sidechain), chuẩn hóa âm lượng đỉnh. */
 export function mix(clips: Clip[], seconds: number): Float32Array[] {
@@ -217,14 +218,16 @@ export function mix(clips: Clip[], seconds: number): Float32Array[] {
   for (const clip of clips) {
     const from = Math.floor(clip.start * sampleRate);
     const frames = clip.samples[0]!.length;
+    const angle = (Math.max(-1, Math.min(1, clip.pan ?? 0)) + 1) * Math.PI / 4;
+    const [panLeft, panRight] = clip.samples.length === 1 ? [Math.cos(angle) * Math.SQRT2, Math.sin(angle) * Math.SQRT2] : [1, 1];
     const fade = Math.floor((clip.fade ?? 0) * sampleRate);
     for (let index = 0; index < frames && from + index < length; index++) {
       if (from + index < 0) continue;
       let gain = clip.gain;
       if (fade) gain *= Math.min(1, index / fade, (frames - index) / fade);
-      if (!clip.voice) gain *= 1 - 0.55 * voiceLevel[Math.floor((from + index) / 480)]!;
-      left[from + index]! += clip.samples[0]![index]! * gain;
-      right[from + index]! += (clip.samples[1] ?? clip.samples[0]!)[index]! * gain;
+      if (!clip.voice && clip.duck !== false) gain *= 1 - 0.55 * voiceLevel[Math.floor((from + index) / 480)]!;
+      left[from + index]! += clip.samples[0]![index]! * gain * panLeft;
+      right[from + index]! += (clip.samples[1] ?? clip.samples[0]!)[index]! * gain * panRight;
     }
   }
   let peak = 1e-6;
@@ -235,4 +238,112 @@ export function mix(clips: Clip[], seconds: number): Float32Array[] {
     right[index]! *= scale;
   }
   return [left, right];
+}
+
+/** Bộ lọc biquad bậc hai (RBJ): low/high pass, band pass, trả về mảng mới. */
+export function biquad(samples: Float32Array, rate: number, frequency: number, type: "low" | "high" | "band", q = Math.SQRT1_2) {
+  const w = 2 * Math.PI * frequency / rate;
+  const alpha = Math.sin(w) / (2 * q);
+  const cos = Math.cos(w);
+  const [b0, b1, b2] = type === "low" ? [(1 - cos) / 2, 1 - cos, (1 - cos) / 2] : type === "high" ? [(1 + cos) / 2, -(1 + cos), (1 + cos) / 2] : [alpha, 0, -alpha];
+  const [a0, a1, a2] = [1 + alpha, -2 * cos, 1 - alpha];
+  let [x1, x2, y1, y2] = [0, 0, 0, 0];
+  const out = new Float32Array(samples.length);
+  for (let index = 0; index < samples.length; index++) {
+    const x = samples[index]!;
+    const y = (b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2) / a0;
+    [x2, x1, y2, y1] = [x1, x, y1, y];
+    out[index] = y;
+  }
+  return out;
+}
+
+export type FoleyKind = "step" | "splash" | "thud" | "rustle" | "paper";
+export type Surface = "grass" | "dirt" | "sand" | "wood" | "tile" | "stone" | "none";
+
+/**
+ * Tiếng động tổng hợp từ nhiễu lọc và dao động tắt dần, mỗi lần một biến thể (seed) để không lặp máy móc:
+ * bước chân theo mặt nền (gỗ cộc cộc, đất lạo xạo, cỏ sột soạt, gạch đá lách cách), mái chèo khua nước, tiếp đất, áo quần, giấy.
+ */
+export function foley(kind: FoleyKind, surface: Surface, seed: number): Float32Array {
+  const rand = random(seed);
+  const variation = 0.85 + rand() * 0.3;
+  const seconds = { step: 0.16, splash: 0.7, thud: 0.3, rustle: 0.45, paper: 0.35 }[kind];
+  const length = Math.ceil(seconds * sampleRate);
+  const noise = Float32Array.from({ length }, () => rand() * 2 - 1);
+  const out = new Float32Array(length);
+  const envelope = (index: number, attack: number, decay: number) => {
+    const time = index / sampleRate;
+    return Math.min(1, time / attack) * Math.exp(-time / decay);
+  };
+  if (kind === "step") {
+    const tone = surface === "wood" || surface === "none" ? 170 * variation : 95 * variation;
+    const band = biquad(noise, sampleRate, { grass: 2800, dirt: 1800, sand: 1400, wood: 900, tile: 3200, stone: 2600, none: 900 }[surface] * variation, "band", 0.9);
+    const grit = surface === "grass" ? 0.5 : surface === "tile" || surface === "stone" ? 0.9 : 0.7;
+    for (let index = 0; index < length; index++) {
+      const thump = Math.sin(2 * Math.PI * tone * index / sampleRate) * envelope(index, 0.002, surface === "wood" || surface === "none" ? 0.05 : 0.025);
+      out[index] = thump * (surface === "grass" || surface === "sand" ? 0.35 : 0.8) + band[index]! * grit * envelope(index, 0.003, surface === "grass" ? 0.06 : 0.035) * 2.2;
+    }
+  } else if (kind === "splash") {
+    // Mái chèo xuống nước: tiếng "tõm" trầm rồi nước rút xèo xèo.
+    const wash = biquad(noise, sampleRate, 1400 * variation, "band", 0.6);
+    for (let index = 0; index < length; index++) {
+      const time = index / sampleRate;
+      const plop = Math.sin(2 * Math.PI * (320 - 180 * Math.min(1, time / 0.05)) * time) * envelope(index, 0.004, 0.04);
+      out[index] = plop * 0.6 + wash[index]! * envelope(index, 0.03, 0.22) * 1.6;
+    }
+  } else if (kind === "thud") {
+    const body = biquad(noise, sampleRate, 400, "low");
+    for (let index = 0; index < length; index++) {
+      out[index] = Math.sin(2 * Math.PI * 70 * variation * index / sampleRate) * envelope(index, 0.002, 0.08) + body[index]! * envelope(index, 0.002, 0.05) * 2;
+    }
+  } else {
+    // Vải và giấy: nhiễu cao tần với vài đợt cọ xát.
+    const band = biquad(noise, sampleRate, kind === "paper" ? 4200 : 2400, "band", kind === "paper" ? 1.2 : 0.7);
+    for (let index = 0; index < length; index++) {
+      const time = index / sampleRate;
+      const scrub = 0.55 + 0.45 * Math.sin(2 * Math.PI * (kind === "paper" ? 23 : 9) * variation * time);
+      out[index] = band[index]! * Math.sin(Math.PI * time / seconds) * scrub * (kind === "paper" ? 0.9 : 0.6);
+    }
+  }
+  return out;
+}
+
+/**
+ * Vang không gian Schroeder (4 comb song song + 2 allpass nối tiếp), trả về tín hiệu vang (wet) stereo.
+ * size 0..1: phòng nhỏ → sảnh lớn; ngoài trời dùng size nhỏ và trộn rất nhẹ.
+ */
+export function reverb(samples: Float32Array, size: number, seed = 3): Float32Array[] {
+  const tail = Math.ceil(sampleRate * (0.3 + size * 1.5));
+  const input = new Float32Array(samples.length + tail);
+  input.set(samples);
+  const rand = random(seed);
+  return [0, 1].map(channel => {
+    const out = new Float32Array(input.length);
+    const feedback = 0.7 + size * 0.15;
+    for (const base of [1557, 1617, 1491, 1422]) {
+      const delay = Math.round((base + channel * 23 + rand() * 40) * (0.6 + size) * sampleRate / 44100);
+      const buffer = new Float32Array(delay);
+      let damped = 0;
+      for (let index = 0; index < input.length; index++) {
+        const position = index % delay;
+        const delayed = buffer[position]!;
+        damped = delayed * 0.75 + damped * 0.25;
+        buffer[position] = input[index]! + damped * feedback;
+        out[index]! += delayed * 0.25;
+      }
+    }
+    for (const base of [225, 556]) {
+      const delay = Math.round((base + channel * 11) * sampleRate / 44100);
+      const buffer = new Float32Array(delay);
+      for (let index = 0; index < out.length; index++) {
+        const position = index % delay;
+        const delayed = buffer[position]!;
+        const value = out[index]!;
+        buffer[position] = value + delayed * 0.5;
+        out[index] = delayed - value * 0.5;
+      }
+    }
+    return out;
+  });
 }

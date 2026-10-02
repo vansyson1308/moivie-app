@@ -14,7 +14,7 @@ let renderer: Renderer | undefined;
 self.onmessage = async (event: MessageEvent<{ setup?: Setup; job?: Segment }>) => {
   if (event.data.setup) {
     setup = event.data.setup;
-    renderer = createRenderer(setup.spec, setup.timeline, ...setup.size);
+    renderer = createRenderer(setup.spec, setup.timeline, ...setup.size, { motionBlur: !setup.draft, fps: setup.fps });
     return;
   }
   const job = event.data.job!;

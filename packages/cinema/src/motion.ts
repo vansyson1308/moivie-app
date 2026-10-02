@@ -174,6 +174,23 @@ const expressionPosture: Partial<Record<Expression, (pose: Pose) => void>> = {
   tender: pose => { pose.headRoll += 0.07; pose.headPitch -= 0.04; },
 };
 
+/** Bước chân dài bao nhiêu đơn vị thế giới: mỗi nửa chu kỳ (pha tăng π) là một bước, gót chạm đất khi pha = π/2 + kπ. */
+export const strideOf = (character: Character, run: boolean) => (run ? 125 : 82) * character.scale;
+
+/**
+ * Tiến độ một lần đi/chạy tại thời điểm t: quay người trong 0,15 s đầu và cuối, vận tốc hình thang (tăng tốc 15% đầu,
+ * giảm tốc 15% cuối). Dùng chung cho dáng đi và tiếng bước chân để hai thứ luôn khớp nhau.
+ */
+export function walkProgress(action: TimedAction, t: number) {
+  const p = clamp((t - action.start) / action.duration);
+  const turnIn = Math.min(0.15 / action.duration, 0.3);
+  const walking = clamp((p - turnIn) / (1 - 2 * turnIn));
+  const ramp = 0.15;
+  const travel = walking < ramp ? walking ** 2 / (2 * ramp * (1 - ramp)) : walking > 1 - ramp ? 1 - (1 - walking) ** 2 / (2 * ramp * (1 - ramp)) : (walking - ramp / 2) / (1 - ramp);
+  const gait = smooth(Math.min(walking * 6, (1 - walking) * 6, 1));
+  return { walking, travel, gait };
+}
+
 export interface PoseContext { t: number; seed: number; positions: Record<string, number>; speaker?: string; id: string }
 
 /** Lò xo tắt dần (nghiệm đóng): vật thể bị kéo theo rồi đung đưa khi chuyển động dừng. */
@@ -199,19 +216,13 @@ export function poseAt(character: Character, state: CharacterState, actions: Tim
     if (name === "walk" || name === "run") {
       const to = action.params.to ?? action.from.x;
       const direction = to >= action.from.x ? 1 : -1;
-      // Quay người 0,15 s đầu, bước, rồi dừng ở góc 3/4 trong 0,15 s cuối; đường đi dùng gia tốc mượt ở hai đầu.
-      const turnIn = Math.min(0.15 / action.duration, 0.3);
-      const walking = clamp((p - turnIn) / (1 - 2 * turnIn));
-      // Vận tốc hình thang: tăng tốc 15% đầu, đều, giảm tốc 15% cuối.
-      const ramp = 0.15;
-      const travel = walking < ramp ? walking ** 2 / (2 * ramp * (1 - ramp)) : walking > 1 - ramp ? 1 - (1 - walking) ** 2 / (2 * ramp * (1 - ramp)) : (walking - ramp / 2) / (1 - ramp);
-      const gait = smooth(Math.min(walking * 6, (1 - walking) * 6, 1));
+      const { travel, gait } = walkProgress(action, t);
       pose = from;
       pose.x = lerp(action.from.x, to, travel);
       const profile = direction * (name === "run" ? 1.4 : 1.3);
+      const turnIn = Math.min(0.15 / action.duration, 0.3);
       pose.yaw = p < turnIn ? angleLerp(action.from.yaw, profile, smooth(p / turnIn)) : p > 1 - turnIn ? angleLerp(profile, action.to.yaw, smooth((p - 1 + turnIn) / turnIn)) : profile;
-      const stride = (name === "run" ? 125 : 82) * character.scale;
-      const phase = (Math.abs(pose.x - action.from.x) / stride) * Math.PI;
+      const phase = (Math.abs(pose.x - action.from.x) / strideOf(character, name === "run")) * Math.PI;
       const amplitude = (name === "run" ? 0.7 : 0.42) * gait;
       const swing = Math.sin(phase);
       // Chân đưa tới thì gập gối để nhấc bàn chân; chân trụ thẳng. Tay vung ngược chân cùng phía.
@@ -379,6 +390,8 @@ export function poseAt(character: Character, state: CharacterState, actions: Tim
   pose.arms.left.swing += Math.sin(t * 1.3 + seed % 5) * 0.02;
   pose.arms.right.swing += Math.sin(t * 1.1 + seed % 3) * 0.02;
   if (!busy) pose.sway += Math.sin(t * 0.45 + seed % 11) * 0.012;
+  // Gió nhẹ: tóc và vạt áo lay theo hai sóng chậm lệch pha, không bao giờ đứng im như tượng.
+  pose.flow[0] += (Math.sin(t * 1.3 + seed % 13) + Math.sin(t * 2.9 + seed % 7) * 0.4) * 1.6 * character.scale;
   const blinkRandom = random(seed + Math.floor(t / 3.2));
   const blinkAt = Math.floor(t / 3.2) * 3.2 + blinkRandom() * 2.8;
   if (t >= blinkAt && t < blinkAt + 0.14) pose.blink = 1 - Math.abs((t - blinkAt) / 0.07 - 1);

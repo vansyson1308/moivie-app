@@ -12,9 +12,16 @@ GlobalFonts.registerFromPath(resolve(import.meta.dirname, "../assets/fonts/beVie
 
 const defaultWidth = 1920;
 
-export interface Renderer { canvas: Canvas; draw(time: number): void; shotAt(time: number): CompiledShot }
+export interface Renderer {
+  canvas: Canvas;
+  draw(time: number): void;
+  shotAt(time: number): CompiledShot;
+  /** Vị trí ngang của nhân vật trên màn hình lúc time (−1 mép trái … +1 mép phải), undefined khi không có trong cảnh. */
+  locate(id: string, time: number): number | undefined;
+}
 
-export function createRenderer(spec: FilmSpec, timeline: Timeline, width: number, height: number): Renderer {
+/** motionBlur: dựng thêm khung phụ trong màn trập 180° khi hình chuyển động nhanh (tắt ở bản nháp). */
+export function createRenderer(spec: FilmSpec, timeline: Timeline, width: number, height: number, options: { motionBlur?: boolean; fps?: number } = {}): Renderer {
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
   const layer = createCanvas(width, height);
@@ -30,6 +37,12 @@ export function createRenderer(spec: FilmSpec, timeline: Timeline, width: number
   const underCtx = under.getContext("2d");
   // Tâm vòng iris: gương mặt nhân vật chính của góc máy vừa vẽ (toạ độ màn hình).
   let focus: [number, number] = [width / 2, height / 2];
+  // Motion blur chỉ cho lớp diễn viên: hậu cảnh (phần đắt nhất, có làm mờ độ sâu) vẽ một lần.
+  const actors = createCanvas(width, height);
+  const actorsCtx = actors.getContext("2d");
+  const accumulator = createCanvas(width, height);
+  const accumulatorCtx = accumulator.getContext("2d");
+  const fps = options.fps ?? 24;
   const props = createProps(spec.props);
   const paths = new Map<string, Path2D>();
   const path2d = (data: string) => paths.get(data) ?? paths.set(data, new Path2D(data)).get(data)!;
@@ -207,7 +220,33 @@ export function createRenderer(spec: FilmSpec, timeline: Timeline, width: number
     } else {
       focus = [width / 2, height / 2];
     }
-    for (const [id, pose] of Object.entries(current)) drawCharacter(ctx, timeline.characters[id]!, pose, props, t, lighting);
+    // Màn trập 180°: khi diễn viên dịch nhanh trên màn hình, chia nửa khung thành n ≤ 4 khung phụ (mỗi khung phụ dịch ≤ ~4 điểm ảnh
+    // ở 1080p) và lấy trung bình trong không gian nhân sẵn alpha (cộng "lighter" với trọng số 1/n).
+    // ACT: hậu cảnh không nhoè theo máy quay; nếu cần nhoè khi lia nhanh thì làm mờ có hướng cho các lớp nền.
+    const samples = options.motionBlur ? Math.min(4, Math.ceil(motion(shot, scene, t) / (4 * height / 1080))) : 1;
+    if (samples > 1) {
+      accumulatorCtx.resetTransform();
+      accumulatorCtx.clearRect(0, 0, width, height);
+      for (let index = 0; index < samples; index++) {
+        const at = t + (index / (samples - 1) - 0.5) * 0.5 / fps;
+        const moment = poses(scene, at);
+        actorsCtx.resetTransform();
+        actorsCtx.clearRect(0, 0, width, height);
+        transform(actorsCtx, view(shot, scene, at, moment), 1, setWidth);
+        for (const [id, pose] of Object.entries(moment)) drawCharacter(actorsCtx, timeline.characters[id]!, pose, props, at, lighting);
+        actorsCtx.resetTransform();
+        accumulatorCtx.globalCompositeOperation = "lighter";
+        accumulatorCtx.globalAlpha = 1 / samples;
+        accumulatorCtx.drawImage(actors, 0, 0);
+      }
+      accumulatorCtx.globalCompositeOperation = "source-over";
+      accumulatorCtx.globalAlpha = 1;
+      ctx.resetTransform();
+      ctx.drawImage(accumulator, 0, 0);
+      transform(ctx, camera, 1, setWidth);
+    } else {
+      for (const [id, pose] of Object.entries(current)) drawCharacter(ctx, timeline.characters[id]!, pose, props, t, lighting);
+    }
     for (const element of plane) drawElement(ctx, element, context("front"), path2d);
 
     for (const element of elements.filter(item => elementDepth(item) > 1)) {
@@ -396,9 +435,35 @@ export function createRenderer(spec: FilmSpec, timeline: Timeline, width: number
     ctx.restore();
   }
 
+  /** Độ dịch chuyển lớn nhất của diễn viên trên màn hình (điểm ảnh) trong nửa khung hình: đầu, hai tay, chân. */
+  function motion(shot: CompiledShot, scene: CompiledScene, t: number) {
+    const setWidth = scene.set.width ?? defaultWidth;
+    const points = (at: number) => {
+      const current = poses(scene, at);
+      const camera = view(shot, scene, at, current);
+      return Object.entries(current).flatMap(([id, pose]) => {
+        const marks = anchors(timeline.characters[id]!, pose);
+        return [marks.head, marks.hands.front, marks.hands.back, marks.feet].map(([x, y]) => project(camera, 1, setWidth, x, y));
+      });
+    };
+    const [a, b] = [points(t - 0.25 / fps), points(t + 0.25 / fps)];
+    return a.reduce((most, point, index) => Math.max(most, Math.hypot(point[0] - b[index]![0], point[1] - b[index]![1])), 0);
+  }
+
   return {
     canvas,
     shotAt,
+    locate(id, time) {
+      const shot = shotAt(time);
+      if (shot.card) return undefined;
+      const scene = timeline.scenes[shot.scene!]!;
+      const t = time - scene.start;
+      const current = poses(scene, t);
+      if (!current[id]) return undefined;
+      const camera = view(shot, scene, t, current);
+      const head = anchors(timeline.characters[id]!, current[id]!).head;
+      return project(camera, 1, scene.set.width ?? defaultWidth, head[0], head[1])[0] / width * 2 - 1;
+    },
     draw(time) {
       const shot = shotAt(time);
       drawRaw(shot, time);

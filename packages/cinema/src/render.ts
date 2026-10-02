@@ -2,11 +2,11 @@ import { createCanvas } from "@napi-rs/canvas";
 import { access, mkdir, readdir, readFile, writeFile } from "@toonflow/file";
 import { createHash } from "node:crypto";
 import { dirname, join, relative } from "node:path";
-import { ambience, mix, music, writeWav, type Clip, type Mood } from "./audio";
+import { ambience, foley, mix, music, reverb, writeWav, type Clip, type FoleyKind, type Mood, type Surface } from "./audio";
 import type { FilmSpec } from "./film";
 import { createRenderer } from "./frame";
 import { ffmpeg } from "./encode";
-import { hashSeed } from "./motion";
+import { hashSeed, strideOf, walkProgress } from "./motion";
 import type { Ambience } from "./set";
 import { collectLines, compile, elementOffset, stateAt, transitionLength, validate, type CompiledShot, type Timeline } from "./timeline";
 import { synthesize, type VoiceEngine, type VoiceResult } from "./voice";
@@ -154,10 +154,77 @@ function sceneAmbience(timeline: Timeline, index: number): Ambience {
   return "wind";
 }
 
-/** Trộn tiếng: thoại, tiếng nền từng cảnh, nhạc nền theo từng đoạn cùng tâm trạng. */
+/**
+ * Tiếng động khớp hình: lấy mốc từ chính dòng thời gian diễn xuất (gót chạm đất theo pha bước, nhịp chèo, lúc tiếp đất,
+ * lúc cử động áo quần, trao thư), chất liệu bước chân theo mặt nền của bối cảnh.
+ */
+function foleyEvents(timeline: Timeline) {
+  const events: { time: number; kind: FoleyKind; surface: Surface; id: string; gain: number }[] = [];
+  for (const scene of timeline.scenes) {
+    const surface: Surface = scene.set.interior ? (scene.set.ground === "tile" || scene.set.ground === "stone" ? scene.set.ground : "wood") : scene.set.ground ?? "dirt";
+    for (const [id, actions] of Object.entries(scene.actions)) {
+      const character = timeline.characters[id]!;
+      // Người đứng trên thuyền: bước chân là sàn gỗ.
+      const floor = scene.initial[id]!.ride ? "wood" : surface;
+      for (const action of actions) {
+        const at = (local: number, kind: FoleyKind, gain = 1) => events.push({ time: scene.start + local, kind, surface: floor, id, gain });
+        if (action.name === "walk" || action.name === "run") {
+          const stride = strideOf(character, action.name === "run");
+          const distance = Math.abs((action.params.to ?? action.from.x) - action.from.x);
+          let next = 0.5;
+          for (let local = action.start; local <= action.start + action.duration; local += 0.005) {
+            const phase = walkProgress(action, local).travel * distance / stride;
+            if (phase >= next) {
+              at(local, "step", action.name === "run" ? 1.2 : character.age === "child" ? 0.6 : 0.85);
+              next += 1;
+            }
+          }
+          at(action.start + action.duration - 0.05, "step", 0.6);
+        }
+        if (action.name === "row") {
+          // Nhịp chèo trong poseAt là sin(2,6·t): mái chèo xuống nước ở đỉnh mỗi chu kỳ.
+          const period = Math.PI * 2 / 2.6;
+          for (let k = Math.ceil((action.start * 2.6 - Math.PI / 2) / (Math.PI * 2)); ; k++) {
+            const local = (Math.PI / 2 + k * Math.PI * 2) / 2.6;
+            if (local > action.start + action.duration) break;
+            if (local >= action.start + period * 0.3) at(local, "splash", 0.9);
+          }
+        }
+        if (action.name === "jump") {
+          at(action.start + action.duration * 0.25, "step", 0.8);
+          at(action.start + action.duration * 0.8, "thud", 1);
+        }
+        if (["sit", "stand", "kneel", "bow", "embrace", "handToChest", "shrug", "pickUp", "putDown", "turn", "point", "wave", "cry"].includes(action.name)) at(action.start + 0.05, "rustle", 0.6);
+        if ((action.name === "give" || action.name === "receive") && action.params.prop) at(action.start + action.duration * 0.55, "paper", 0.7);
+      }
+    }
+  }
+  return events;
+}
+
+/**
+ * Trộn tiếng: thoại (pan theo vị trí người nói trên màn hình, vang theo không gian), tiếng động, tiếng nền từng cảnh
+ * nối cầu giữa các cảnh, nhạc nền theo từng đoạn cùng tâm trạng.
+ */
 async function renderAudio(project: Project, timeline: Timeline, voices: VoiceResult[], path: string, from = 0, to = timeline.duration) {
   const clips: Clip[] = [];
-  for (const line of timeline.lines) clips.push({ samples: [voices[line.voice]!.samples], start: line.start - from, gain: 1, voice: true });
+  // Bộ dựng tí hon chỉ để hỏi vị trí nhân vật trong khung hình (cùng máy quay với hình thật).
+  const locator = createRenderer(project.spec, timeline, 64, 36);
+  const sceneAt = (time: number) => timeline.scenes.find(scene => time >= scene.start && time < scene.start + scene.duration);
+  for (const line of timeline.lines) {
+    const samples = voices[line.voice]!.samples;
+    const pan = line.speaker === "narrator" ? 0 : (locator.locate(line.speaker, line.start + line.duration / 2) ?? 0) * 0.35;
+    clips.push({ samples: [samples], start: line.start - from, gain: 1, voice: true, pan });
+    const scene = sceneAt(line.start);
+    if (!scene || line.speaker === "narrator") continue;
+    // Vang theo không gian: phòng kín rõ, ngoài trời chỉ thoáng chút phản xạ.
+    const [wetLeft, wetRight] = reverb(samples, scene.set.interior ? 0.35 : 0.1, hashSeed(line.text));
+    clips.push({ samples: [wetLeft!, wetRight!], start: line.start - from, gain: scene.set.interior ? 0.22 : 0.07, duck: false });
+  }
+  for (const [index, event] of foleyEvents(timeline).entries()) {
+    const pan = (locator.locate(event.id, event.time) ?? 0) * 0.6;
+    clips.push({ samples: [foley(event.kind, event.surface, index * 7919 + 13)], start: event.time - from, gain: 0.2 * event.gain, pan, duck: false });
+  }
   for (const [index, scene] of timeline.scenes.entries()) {
     const kind = sceneAmbience(timeline, index);
     // Cầu âm thanh (J/L cut): tiếng nền cảnh sau vào trước khi cắt hình 1 giây, tiếng cảnh trước còn vọng 1 giây sau đó.
@@ -286,7 +353,7 @@ export async function renderSheets(project: Project, options: Omit<RenderOptions
 
 export async function renderStill(project: Project, options: Omit<RenderOptions, "draft">, time: number) {
   const { timeline } = await prepare(project, options);
-  const renderer = createRenderer(project.spec, timeline, ...frameSize(project.spec));
+  const renderer = createRenderer(project.spec, timeline, ...frameSize(project.spec), { motionBlur: true });
   renderer.draw(time);
   const file = join(project.directory, "out", `still-${time.toFixed(1)}s.png`);
   await mkdir(dirname(file), { recursive: true });

@@ -1,3 +1,4 @@
+import { biquad } from "./audio";
 import type { Viseme } from "./character";
 
 export interface Syllable { text: string; start: number; nucleus: number; end: number; stress: number }
@@ -5,25 +6,6 @@ export interface VisemeKey { time: number; viseme: Viseme }
 export interface LipSync { syllables: Syllable[]; track: VisemeKey[] }
 
 const frameRate = 100;
-
-/** Bộ lọc biquad (RBJ) bậc hai, chạy tại chỗ. */
-function biquad(samples: Float32Array, rate: number, frequency: number, type: "low" | "high") {
-  const w = 2 * Math.PI * frequency / rate;
-  const alpha = Math.sin(w) / Math.SQRT2;
-  const cos = Math.cos(w);
-  const b1 = type === "low" ? 1 - cos : -(1 + cos);
-  const b0 = type === "low" ? b1 / 2 : (1 + cos) / 2;
-  const [a0, a1, a2] = [1 + alpha, -2 * cos, 1 - alpha];
-  let [x1, x2, y1, y2] = [0, 0, 0, 0];
-  const out = new Float32Array(samples.length);
-  for (let index = 0; index < samples.length; index++) {
-    const x = samples[index]!;
-    const y = (b0 * x + b1 * x1 + b0 * x2 - a1 * y1 - a2 * y2) / a0;
-    [x2, x1, y2, y1] = [x1, x, y1, y];
-    out[index] = y;
-  }
-  return out;
-}
 
 /**
  * Cường độ dải nguyên âm (300–2500 Hz) theo dB, 100 khung/giây, đã làm mượt ~40 ms.
