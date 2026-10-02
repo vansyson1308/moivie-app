@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
-import { access, mkdir } from "@toonflow/file";
+import { plugin } from "bun";
+import { access, mkdir, readFile } from "@toonflow/file";
 import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Film } from "./src/film";
@@ -25,7 +26,8 @@ const command = args[0];
 const flag = (name: string) => { const index = args.indexOf(`--${name}`); return index >= 0 ? args[index + 1] : undefined; };
 const has = (name: string) => args.includes(`--${name}`);
 const log = (message: string) => console.log(message);
-const venv = resolve(import.meta.dirname, ".venv");
+// CINEMA_VENV: nơi cài VieNeu khi thư mục bộ dựng chỉ đọc (ứng dụng desktop đặt vào thư mục dữ liệu).
+const venv = process.env.CINEMA_VENV ? resolve(process.env.CINEMA_VENV) : resolve(import.meta.dirname, ".venv");
 const venvPython = join(venv, process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
 const exists = (path: string) => access(path).then(() => true, () => false);
 
@@ -40,6 +42,19 @@ function parseShots(value?: string) {
 async function loadProject(file?: string): Promise<Project> {
   if (!file) throw new Error("Thiếu đường dẫn film.ts");
   const path = resolve(file);
+  // Phim nằm ở thư mục bất kỳ (workspace của ứng dụng, ngoài repo) vẫn import được "@toonflow/cinema":
+  // viết lại đường import trong các tệp .ts cùng thư mục phim thành đường dẫn tuyệt đối tới bộ dựng này.
+  const entry = pathToFileURL(resolve(import.meta.dirname, "src/index.ts")).href;
+  const folder = dirname(path).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  plugin({
+    name: "cinemaImport",
+    setup(build) {
+      build.onLoad({ filter: new RegExp(`^${folder}[\\\\/].*\\.ts$`) }, async ({ path: source }) => ({
+        contents: (await readFile(source, "utf8")).replace(/(from\s+|import\s*\(\s*)(["'])@toonflow\/cinema\2/g, `$1"${entry}"`),
+        loader: "ts",
+      }));
+    },
+  });
   const module = await import(pathToFileURL(path).href) as { default?: Film };
   if (!module.default?.spec) throw new Error(`${file} phải export default kết quả của createFilm(...)`);
   return { file: path, directory: dirname(path), name: basename(dirname(path)), spec: module.default.spec };

@@ -51,6 +51,7 @@ for (const script of mode === "dev" ? ["dev:plugins"] : [
 }
 await $`${process.execPath} run --filter @toonflow/web build`.cwd(projectDir);
 await $`${process.execPath} run --filter @toonflow/mcp build`.cwd(projectDir);
+await $`${process.execPath} ${resolve(projectDir, "apps/desktop/scripts/stageCinema.ts")}`.cwd(projectDir);
 if (isIntelMac) {
   // ACT: 共用插件和 Web 构建；Intel Mac 仅将 SDK 适配交给独立的 1.18.1。
   await $`${process.execPath} ${resolve(projectDir, "compat/macIntel/build.ts")} ${mode === "package" ? "build" : mode}`.cwd(projectDir);

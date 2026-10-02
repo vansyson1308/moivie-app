@@ -1,28 +1,47 @@
 ---
 name: cinema
-description: Làm phim hoạt hình tiếng Việt hoàn toàn trên máy, không cần API key — agent viết kịch bản theo chương, dựng diễn viên/bối cảnh bằng mã, phân cảnh, đạo diễn máy quay và diễn xuất, lồng tiếng VieNeu-TTS, rồi tự dựng ra MP4 có phụ đề, nhạc nền, tiếng nền. Dùng khi người dùng muốn "làm phim", "phim hoạt hình", "phim ngắn có nhân vật và lời thoại", "chuyển truyện thành phim", hoặc sửa tiếp một phim trong projects/.
+description: Làm phim hoạt hình tiếng Việt hoàn toàn trên máy, không cần API key — agent viết kịch bản theo chương, dựng diễn viên/bối cảnh bằng mã, phân cảnh, đạo diễn máy quay và diễn xuất, lồng tiếng VieNeu-TTS, rồi tự dựng ra MP4 có phụ đề, nhạc nền, tiếng nền. Dùng khi người dùng muốn "làm phim", "phim hoạt hình", "phim ngắn có nhân vật và lời thoại", "chuyển truyện thành phim", hoặc sửa tiếp một phim đã có film.ts.
+metadata:
+  version: "2.0.0"
+  displayName: Xưởng phim Toonflow Cinema
+  author: Toonflow
+  github: https://github.com/vansyson1308/moivie-app
 ---
 
 # Xưởng phim biên dịch — Toonflow Cinema
 
-Bạn (agent) là **biên kịch + đạo diễn + họa sĩ + đạo diễn diễn xuất + đạo diễn lồng tiếng + dựng phim**. Bạn viết cả bộ phim thành **mã TypeScript**; máy biên dịch mã thành phim: nhân vật có khung xương, nhép miệng theo giọng thật, máy quay ảo có thị sai nhiều lớp, ánh sáng theo giờ, thời tiết, nhạc tự sinh, trộn tiếng, phụ đề, xuất MP4. Không gọi API tạo ảnh/video nào, chi phí bằng 0, kết quả lặp lại y hệt.
+Bạn (agent) là **biên kịch + đạo diễn + họa sĩ + đạo diễn diễn xuất + đạo diễn lồng tiếng + dựng phim**. Bạn viết cả bộ phim thành **mã TypeScript**; máy biên dịch mã thành phim:
+- diễn viên 2.5D quay được mọi góc (chính diện, 3/4, nghiêng, sau lưng), bàn tay có ngón, đổ bóng theo nguồn sáng của cảnh;
+- khẩu hình căn theo từng âm tiết của giọng thật;
+- máy quay ảo có thị sai nhiều lớp, motion blur;
+- hòa hình, gạt, iris giữa các góc máy;
+- tiếng bước chân và tiếng động khớp hình, thoại pan theo vị trí;
+- nhạc tự sinh, phụ đề;
+- xuất MP4 tới khổ rạp 2,39:1 và 4K. Không gọi API tạo ảnh/video nào, chi phí bằng 0, kết quả lặp lại y hệt.
 
 Vì phim là mã: **nhân vật không bao giờ "trôi" ngoại hình**, cảnh sau tự nối đúng vị trí cảnh trước, sửa một câu thoại chỉ đọc lại câu đó và chỉ dựng lại cảnh chứa nó.
 
 Trả lời người dùng bằng ngôn ngữ của họ (mặc định tiếng Việt).
 
-## Chuẩn bị (một lần)
+## Hai cách chạy
 
-```bash
-bun install
-bun run cinema setup      # cài VieNeu-TTS vào packages/cinema/.venv (~1 GB mô hình, chạy CPU)
-```
-
-Cần FFmpeg trong PATH (hoặc `FFMPEG_PATH`). Chưa cài VieNeu vẫn làm được: máy dùng **giọng câm** (thời lượng ước theo âm tiết, miệng vẫn nhép) để dựng nháp, cài xong thì dựng lại là có tiếng.
+- **Trong ứng dụng Toonflow** (agent của app):
+  - viết `film.ts` vào workspace bằng công cụ ghi tệp;
+  - mọi lệnh ở bước 4–6 chạy bằng công cụ `cinema`, ví dụ `{ "command": "sheet", "film": "phimCuaToi/film.ts" }`; `outputs` trả về các tệp đã tạo (đọc ảnh storyboard bằng công cụ đọc tệp);
+  - cài giọng một lần bằng `{ "command": "setup" }`;
+  - FFmpeg lấy theo cấu hình trong chợ plugin;
+  - trên canvas có node **Phim** để người dùng tự bấm dựng và xem.
+- **Trong Claude Code / Codex** (repo này): dùng các lệnh `bun run cinema …` bên dưới.
+  - Chuẩn bị một lần: `bun install`, rồi `bun run cinema setup` để cài VieNeu-TTS vào `packages/cinema/.venv` (khoảng 1 GB mô hình, chạy CPU).
+  - Cần FFmpeg trong PATH (hoặc `FFMPEG_PATH`). Chưa cài VieNeu vẫn làm được: máy dùng **giọng câm** (thời lượng ước theo âm tiết, miệng vẫn nhép) để dựng nháp, cài xong thì dựng lại là có tiếng.
 
 ## Quy trình 6 bước
 
-Mỗi phim là một thư mục riêng `projects/<tenPhim>/` (đã được Git bỏ qua, không commit). Mẫu đầy đủ: [`examples/chuyenDoCuoi/film.ts`](examples/chuyenDoCuoi/film.ts).
+Mỗi phim là một thư mục riêng chứa `film.ts`:
+- trong app: một thư mục trong workspace;
+- trong repo: `projects/<tenPhim>/`, đã được Git bỏ qua, không commit.
+
+Mẫu đầy đủ: [`packages/cinema/examples/chuyenDoCuoi/film.ts`](../../cinema/examples/chuyenDoCuoi/film.ts). `import { createFilm } from "@toonflow/cinema"` dùng được ở bất kỳ thư mục nào.
 
 ### 1. Kịch bản theo chương
 
@@ -90,6 +109,14 @@ export default film;
 - Một cảnh nên mở bằng toàn cảnh (`establishing`/`wide`) để khán giả biết ai ở đâu; sau đó mới vào cận.
 - `shot("auto")` hợp cho hội thoại dài; tự đặt góc máy khi cần ý đồ (phản ứng, chi tiết, cú lật).
 - Cảnh xúc động: `closeUp` + `push`/`dollyIn`, góc `low` cho nhân vật mạnh mẽ, `high` cho nhân vật yếu thế, `handheld` cho căng thẳng.
+- **Hướng nhìn là góc quay liên tục**: `facing` nhận `left`/`right` (3/4, góc kể chuyện chuẩn), `front` (nhìn thẳng máy, hợp lời độc thoại, lúc bàng hoàng), `back` (quay lưng: ra đi, giấu cảm xúc) hoặc số radian. `act("lan", "turn", { at: "back" })` quay người mượt qua chính diện. Người nghe tự quay đầu và đưa mắt về người nói.
+- **Chuyển cảnh** đặt ở góc máy mới:
+  - `transition: "dissolve"`: hòa hình, dùng khi đổi cảnh hoặc thời gian trôi;
+  - `"fade"`/`"fadeWhite"`: qua đen/trắng, dùng khi hết hồi;
+  - `"wipe"`: gạt theo hướng nhân vật, dùng khi chuyển địa điểm cùng nhịp;
+  - `"iris"`: mở vòng từ gương mặt nhân vật chính, cho mở đầu hoặc khoảnh khắc đáng nhớ;
+  - đặt thời lượng bằng `transitionDuration`.
+  - Hội thoại máy tự chia (`auto`) tự dùng L-cut khi đổi người nói. Tiếng nền tự nối cầu sang cảnh sau.
 
 ### 4. Dựng thử và duyệt (vòng lặp chính)
 
@@ -108,15 +135,20 @@ bun run cinema render projects/<ten>/film.ts --draft --shots 3-6   # xem thử v
 | Liên tục | Vị trí, hướng mặt, đạo cụ trong tay nối đúng giữa các góc máy? |
 | Diễn xuất | Biểu cảm hợp lời thoại? Người nghe có phản ứng? Động tác có lặp đơ? |
 | Nhịp | Góc máy dưới 1,2 giây có gây giật? Cảnh nào kéo dài không có gì xảy ra? |
-| Ánh sáng | Giờ trong ngày hợp tâm trạng (bình minh: hy vọng, chiều vàng: hoài niệm, đêm: cô đơn)? |
+| Ánh sáng | Giờ trong ngày hợp tâm trạng (bình minh: hy vọng, chiều vàng: hoài niệm, đêm: cô đơn)? Bóng trên nhân vật tự lấy hướng theo mặt trời của cảnh. |
+| Góc nhìn | Nhân vật có đứng một kiểu 3/4 suốt phim? Dùng `front`/`back`/`turn` cho khoảnh khắc mạnh. |
 
-Sửa mã → chạy lại `sheet`. Góc máy không đổi sẽ không bị dựng lại.
+Sửa mã → chạy lại `sheet`. Bộ nhớ đệm tính theo lát nội dung của từng góc máy: sửa một câu thoại chỉ dựng lại góc máy chứa nó (và đoạn chuyển cảnh liền sau nếu có).
 
 ### 5. Dựng âm thanh
 
 - Lồng tiếng: tự động bằng VieNeu-TTS theo `voice` của từng nhân vật, `narrator` cho lời dẫn; được nhớ đệm theo nội dung câu.
 - Nhạc nền: tự sinh theo tâm trạng (`calm`, `sad`, `tense`, `hopeful`, `playful`, `epic`, `none`), đặt ở `createFilm({ music })` hoặc từng `scene(..., { music })`. Các cảnh liền nhau cùng tâm trạng dùng chung một bản nhạc; nhạc tự hạ khi có thoại.
 - Tiếng nền: suy từ bối cảnh (sông, mưa, đêm, phòng kín…) hoặc đặt `ambience` trong `film.set`.
+- Tiếng động tự sinh khớp hình:
+  - bước chân đúng lúc gót chạm đất, theo mặt nền (`ground`; đứng trên thuyền thì là sàn gỗ);
+  - mái chèo khua nước, tiếp đất khi nhảy, sột soạt áo quần, giấy khi trao thư.
+- Thoại và tiếng động pan theo vị trí nhân vật trên màn hình; nội thất có vang phòng.
 
 ### 6. Ghép phim
 
@@ -124,7 +156,7 @@ Sửa mã → chạy lại `sheet`. Góc máy không đổi sẽ không bị d�
 bun run cinema render projects/<ten>/film.ts
 ```
 
-Ra `out/<ten>.mp4` (1080p, 24 hình/giây, chuẩn âm lượng −16 LUFS), `out/<ten>.srt` và `out/<ten>-report.json`. Đọc báo cáo: `frames` phải bằng `expectedFrames`. Dựng song song trên nhiều nhân CPU; phim 1 phút mất khoảng 2–3 phút trên máy 4 nhân. Gửi người dùng tệp MP4, SRT, thời lượng, danh sách cảnh và những chỗ bạn đã tự sửa sau khi duyệt.
+Ra `out/<ten>.mp4` (1080p hoặc 4K, 24 hình/giây, motion blur, chuẩn âm lượng −16 LUFS), `out/<ten>.srt` và `out/<ten>-report.json`. Đọc báo cáo: `frames` phải bằng `expectedFrames`. Dựng song song trên nhiều nhân CPU; phim 1 phút mất khoảng 2–3 phút trên máy 4 nhân. Gửi người dùng tệp MP4, SRT, thời lượng, danh sách cảnh và những chỗ bạn đã tự sửa sau khi duyệt.
 
 ## Tra cứu nhanh
 
@@ -134,15 +166,15 @@ Ra `out/<ten>.mp4` (1080p, 24 hình/giây, chuẩn âm lượng −16 LUFS), `ou
 
 **Vật thể** (`elements[].type`): hậu cảnh `mountains`, `hills`, `forest`, `city`, `clouds`, `sea`, `river`, `rice`, `bamboo`, `pagoda`; sân khấu `tree`, `palm`, `house`, `pier`, `boat`, `table`, `chair`, `stool`, `lantern`, `lamp`, `campfire`, `altar`, `window`, `door`, `frame`, `bed`, `rock`, `bush`, `sign` (có `text`); tiền cảnh `reeds`, `grass`; tự vẽ `path`. Trường chung: `id`, `x`, `y`, `depth`, `scale`, `width`, `color`, `seed`, `flip`, `front`.
 
-**Vị trí ban đầu** (`scene` cast): `x`, `facing` (left/right), `posture` (stand/sit/kneel), `expression`, `hold` (đạo cụ), `ride` (id vật thể để đi theo, ví dụ thuyền), `lookAt`.
+**Vị trí ban đầu** (`scene` cast): `x`, `facing` (left, right, front, back hoặc radian), `posture` (stand/sit/kneel), `expression`, `hold` (đạo cụ), `ride` (id vật thể để đi theo, ví dụ thuyền), `lookAt`.
 
-**Diễn xuất** (`act`): `walk`/`run` `{ to }`, `turn` `{ at? }`, `sit`, `kneel`, `stand`, `nod`, `shake`, `bow`, `wave`, `point` `{ at }`, `handToChest`, `cry`, `laugh`, `think`, `shrug`, `embrace`, `row`, `give` `{ at, prop }`, `pickUp` `{ prop }`, `putDown`, `jump`, `look` `{ at }`, `emote` `{ expression }`; mọi động tác nhận `duration`.
+**Diễn xuất** (`act`): `walk`/`run` `{ to }`, `turn` `{ at? }` (id nhân vật hoặc left/right/front/back), `sit`, `kneel`, `stand`, `nod`, `shake`, `bow`, `wave`, `point` `{ at }`, `handToChest`, `cry`, `laugh`, `think`, `shrug`, `embrace`, `row`, `give` `{ at, prop }`, `pickUp` `{ prop }`, `putDown`, `jump`, `look` `{ at }`, `emote` `{ expression }`; mọi động tác nhận `duration`.
 
 **Biểu cảm**: neutral, happy, sad, angry, surprised, scared, thinking, tender. **Đạo cụ có sẵn**: oar, letter, flower, lantern, bag, book, cup, stick, umbrella, phone, bowl, fan, basket.
 
-**Góc máy** (`shot`): cỡ `establishing`, `wide`, `full`, `medium`, `mediumClose`, `closeUp`, `extremeCloseUp`, `twoShot`, `overShoulder` (`on: [người nói, người nghe]`), `auto`; `move`: static, push, dollyIn, dollyOut, panLeft, panRight, tiltUp, tiltDown, craneUp, craneDown, follow, handheld; `angle`: eyeLevel, low, high, dutch; `transition`: cut, fade, fadeWhite; `dof`; `duration`.
+**Góc máy** (`shot`): cỡ `establishing`, `wide`, `full`, `medium`, `mediumClose`, `closeUp`, `extremeCloseUp`, `twoShot`, `overShoulder` (`on: [người nói, người nghe]`), `auto`; `move`: static, push, dollyIn, dollyOut, panLeft, panRight, tiltUp, tiltDown, craneUp, craneDown, follow, handheld; `angle`: eyeLevel, low, high, dutch; `transition`: cut, dissolve, fade, fadeWhite, wipe, iris; `transitionDuration`; `dof`; `duration`.
 
-**Phim** (`createFilm`): `title`, `format` (landscape, portrait cho TikTok, square), `narrator`, `music`, `subtitles`, `credits`, `author`, `look: { grain, vignette, letterbox }`.
+**Phim** (`createFilm`): `title`, `format` (landscape 16:9, scope 2,39:1 chiếu rạp, flat 1,85:1, portrait cho TikTok, square), `resolution` (1080p, 4k), `narrator`, `music`, `subtitles`, `credits`, `author`, `look: { grain, vignette, letterbox }`.
 
 ## Xử lý sự cố
 
@@ -153,4 +185,5 @@ Ra `out/<ten>.mp4` (1080p, 24 hình/giây, chuẩn âm lượng −16 LUFS), `ou
 | Không có mạng / chưa cài giọng | `--voice silent` để dựng nháp đúng nhịp |
 | Muốn dùng máy chủ VieNeu riêng | `VIENEU_URL=http://127.0.0.1:8000` (máy chủ `python -m apps.openai_speech`) |
 | Nhân vật ra khỏi khung | kiểm tra `x` so với `width` của bối cảnh; dùng `twoShot`/`wide` thay vì cận |
-| Dựng chậm | dùng `--draft` và `--shots` khi duyệt; đặt `CINEMA_WORKERS` để đổi số luồng |
+| Dựng chậm | dùng `--draft` và `--shots` khi duyệt (bản nháp tắt motion blur); đặt `CINEMA_WORKERS` để đổi số luồng |
+| App báo cần FFmpeg | cài hoặc chọn FFmpeg trong chợ plugin rồi chạy lại |

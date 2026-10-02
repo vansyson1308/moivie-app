@@ -124,6 +124,7 @@ async function start() {
       return;
     }
     process.env.toonflowDesktop = "1";
+    process.env.TOONFLOW_CINEMA_ROOT ??= resolve(PATHS.VIEWS_FOLDER, "../cinema");
     const { createApp } = await import("@toonflow/server/app");
     const { hash } = await file(resolve(PATHS.RESOURCES_FOLDER, "version.json")).json();
     if (typeof hash !== "string" || !hash) throw new Error(t`应用构建标识缺失，无法同步内置插件`);

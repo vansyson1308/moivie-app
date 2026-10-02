@@ -25,6 +25,8 @@ export default {
       // ACT: 团队暂不打包，恢复时取消注释。
       // "build/agents": "agents",
       "build/nodes": "nodes",
+      // Bộ dựng phim chạy như tiến trình bun riêng, kèm phụ thuộc gốc của nền tảng (xem apps/desktop/scripts/stageCinema.ts).
+      "build/cinema": "cinema",
       "packages/providers/src": "providers",
       "packages/skills": "skills",
       "packages/startup/assets/startup.json": "startup/startup.json",

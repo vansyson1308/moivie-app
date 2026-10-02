@@ -1,6 +1,6 @@
 # Toonflow Cinema — điện ảnh biên dịch
 
-[Mục lục tài liệu](./readme.md) · [Hướng dẫn cho agent](../packages/cinema/SKILL.md) · [Phim mẫu](../packages/cinema/examples/chuyenDoCuoi/film.ts)
+[Mục lục tài liệu](./readme.md) · [Hướng dẫn cho agent](../packages/skills/cinema/SKILL.md) · [Phim mẫu](../packages/cinema/examples/chuyenDoCuoi/film.ts)
 
 ## Ý tưởng
 
@@ -74,7 +74,7 @@ bun run cinema setup                                   # một lần: VieNeu-TTS
 bun run cinema render packages/cinema/examples/chuyenDoCuoi/film.ts
 ```
 
-Với agent: giao cho nó [`packages/cinema/SKILL.md`](../packages/cinema/SKILL.md), hoặc gõ `/cinema` trong Claude Code, kèm ý tưởng hay truyện. Agent tự viết `projects/<tenPhim>/film.ts`, duyệt storyboard và giao phim.
+Với agent: giao cho nó [`packages/skills/cinema/SKILL.md`](../packages/skills/cinema/SKILL.md), hoặc gõ `/cinema` trong Claude Code, kèm ý tưởng hay truyện. Agent tự viết `projects/<tenPhim>/film.ts`, duyệt storyboard và giao phim.
 
 ## Giới hạn hiện tại và hướng phát triển
 

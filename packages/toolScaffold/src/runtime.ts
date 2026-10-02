@@ -186,8 +186,24 @@ export interface ToolFiles {
   copyFile(path: string, target: string, exclusive?: boolean): Promise<void>;
 }
 
+/** Lệnh của bộ dựng phim Toonflow Cinema; film là đường dẫn film.ts trong workspace. */
+export interface CinemaRequest {
+  command: "check" | "sheet" | "still" | "render" | "setup" | "voices";
+  film?: string;
+  draft?: boolean;
+  /** Chỉ dựng các góc máy chọn, ví dụ "3,5-7". */
+  shots?: string;
+  /** still: thời điểm (giây). */
+  at?: number;
+  voice?: "vieneu" | "silent";
+}
+
+/** outputs: tệp lệnh đã tạo (đường dẫn tương đối trong workspace); log: toàn bộ nhật ký. */
+export interface CinemaResult { outputs: string[]; log: string }
+
 export interface ToolContext {
   ffmpeg(signal?: AbortSignal): Promise<FfmpegFactory>;
+  cinema?(request: CinemaRequest, onLine?: (line: string) => void, signal?: AbortSignal): Promise<CinemaResult>;
   media?: MediaContext;
   canvas?: CanvasContext;
   question?: QuestionContext;

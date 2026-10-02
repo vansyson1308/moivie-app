@@ -1,6 +1,7 @@
 import { t } from "@/lib/i18n";
 import { listMediaModels, generateMedia } from "@/utils/media/generation";
 import { createWorkspaceFfmpeg } from "@/utils/ffmpeg";
+import { runCinema } from "@/utils/cinema";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { access, constants, copyFile, lstat, mkdir, readFile, readdir, rm, rmdir, stat, withFileAccess } from "@toonflow/file";
 import {
@@ -58,6 +59,7 @@ export function createAgentToolContext(cwd: string, config: Record<string, unkno
   return {
     cwd, config, files, resolvePath, writeFile: files.writeFile, canvas, question, skills: createSkillContext(cwd),
     ffmpeg: signal => createWorkspaceFfmpeg(cwd, signal),
+    cinema: (request, onLine, signal) => runCinema(cwd, request, onLine ?? (() => {}), signal ?? new AbortController().signal),
     media: {
       listModels: listMediaModels,
       generateImage: (request, signal) => generateMedia(cwd, "image", request, signal),
