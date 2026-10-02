@@ -1,6 +1,6 @@
 import type { CharacterSpec, Expression } from "./character";
 import type { Mood } from "./audio";
-import type { ActionName, ActionParams, Posture } from "./motion";
+import type { ActionName, ActionParams, Facing, Posture } from "./motion";
 import type { SetSpec } from "./set";
 
 export type ShotSize = "establishing" | "wide" | "full" | "medium" | "mediumClose" | "closeUp" | "extremeCloseUp" | "twoShot" | "overShoulder" | "auto";
@@ -22,7 +22,8 @@ export interface ShotSpec extends Omit<ShotOptions, "on"> { size: ShotSize; on: 
 
 export interface Placement {
   x: number;
-  facing?: "left" | "right";
+  /** Hướng nhìn: "left"/"right" (góc 3/4), "front" (chính diện), "back" (quay lưng), hoặc góc quay tính bằng radian. */
+  facing?: Facing | number;
   posture?: Posture;
   expression?: Expression;
   hold?: string;

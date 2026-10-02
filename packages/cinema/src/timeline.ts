@@ -1,7 +1,9 @@
 import { createCharacter, type Character } from "./character";
 import type { Mood } from "./audio";
 import type { FilmSpec, Placement, ShotSpec } from "./film";
-import { actionDuration, actionEnd, hashSeed, visemesFor, type CharacterState, type Speech, type TimedAction } from "./motion";
+import { lipSync } from "./lipSync";
+import { actionDuration, actionEnd, facingYaw, hashSeed, nearSide, yawToward, type CharacterState, type Speech, type TimedAction } from "./motion";
+import { sampleRate } from "./audio";
 import { spokenText, envelopeRate, type VoiceRequest, type VoiceResult } from "./voice";
 import type { SetSpec } from "./set";
 
@@ -60,9 +62,10 @@ export function validate(spec: FilmSpec) {
 export const builtInProps = new Set(["oar", "letter", "flower", "lantern", "bag", "book", "cup", "stick", "umbrella", "phone", "bowl", "fan", "basket"]);
 
 function initialState(placement: Placement): CharacterState {
+  const yaw = typeof placement.facing === "number" ? placement.facing : facingYaw[placement.facing ?? "right"];
   return {
-    x: placement.x, facing: placement.facing === "left" ? -1 : 1, posture: placement.posture ?? "stand",
-    hold: placement.hold ? { front: placement.hold } : {}, expression: placement.expression ?? "neutral", lookAt: placement.lookAt, ride: placement.ride,
+    x: placement.x, yaw, posture: placement.posture ?? "stand",
+    hold: placement.hold ? { [nearSide(yaw)]: placement.hold } : {}, expression: placement.expression ?? "neutral", lookAt: placement.lookAt, ride: placement.ride,
   };
 }
 
@@ -151,9 +154,10 @@ export function compile(spec: FilmSpec, voices: VoiceResult[]): Timeline {
         const line: Line = { start: start + lineLead, duration: voice.duration, text: spokenText(beat.text), speaker: beat.kind === "say" ? beat.who : "narrator", voice: voiceIndex++ };
         scene.lines.push(line);
         if (beat.kind === "say") {
+          const sync = lipSync(line.text, voice.samples, sampleRate);
           scene.speech[beat.who]!.push({
             start: line.start, duration: line.duration, envelope: voice.envelope, envelopeRate,
-            visemes: visemesFor(line.text), expression: beat.emotion, seed: hashSeed(beat.text),
+            track: sync.track, syllables: sync.syllables, expression: beat.emotion, seed: hashSeed(beat.text),
           });
         }
         end = start + lineLead + voice.duration + lineTail;
@@ -167,7 +171,8 @@ export function compile(spec: FilmSpec, voices: VoiceResult[]): Timeline {
         states[beat.who] = to;
         if (beat.action === "give" && beat.params.at && states[beat.params.at] && beat.params.prop) {
           const receiver = states[beat.params.at]!;
-          const received: CharacterState = { ...receiver, facing: to.x > receiver.x ? 1 : -1, hold: { ...receiver.hold, front: beat.params.prop } };
+          const yaw = yawToward(receiver, beat.who, { ...positions, [beat.who]: to.x });
+          const received: CharacterState = { ...receiver, yaw, hold: { ...receiver.hold, [nearSide(yaw)]: beat.params.prop } };
           scene.actions[beat.params.at]!.push({ name: "receive", start: start + duration * 0.35, duration: duration * 0.65, params: { at: beat.who }, from: receiver, to: received });
           states[beat.params.at] = received;
         }

@@ -12,7 +12,8 @@ import { collectLines, compile, validate, type CompiledShot, type Timeline } fro
 import { synthesize, type VoiceEngine, type VoiceResult } from "./voice";
 
 // Mã băm toàn bộ mã nguồn bộ dựng: sửa bộ dựng thì mọi góc máy được dựng lại, không dùng nhầm bản cũ.
-const sources = (await readdir(import.meta.dirname)).filter(name => name.endsWith(".ts")).sort();
+// Mã nguồn bộ dựng (gồm thư mục con như rig/) là một phần khoá đệm: sửa bộ dựng thì dựng lại.
+const sources = (await readdir(import.meta.dirname, { recursive: true })).filter(name => name.endsWith(".ts")).sort();
 export const engineVersion = createHash("sha256").update((await Promise.all(sources.map(name => readFile(join(import.meta.dirname, name), "utf8")))).join("\n")).digest("hex").slice(0, 12);
 export interface Project { file: string; directory: string; name: string; spec: FilmSpec }
 export interface RenderOptions { draft?: boolean; voice: VoiceEngine; python?: string; serverUrl?: string; shots?: number[]; log: (message: string) => void }

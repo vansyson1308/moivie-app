@@ -15,10 +15,12 @@ function paint(ctx: SKRSContext2D, fill: string, width = 2.5) {
 }
 
 function held(draw: (ctx: SKRSContext2D, s: number, t: number) => void, upright = false, follow = 1): PropDrawer {
-  return (ctx, hand: Point, angle, scale, t) => {
+  return (ctx, hand: Point, angle, scale, t, mirror) => {
     ctx.save();
     ctx.translate(hand[0], hand[1]);
-    if (!upright) ctx.rotate(0.15 - angle * follow);
+    // Đạo cụ quay theo hướng nhân vật: nhìn sang trái thì lật ngang.
+    ctx.scale(mirror, 1);
+    if (!upright) ctx.rotate(0.15 - angle * mirror * follow);
     draw(ctx, scale, t);
     ctx.restore();
   };

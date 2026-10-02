@@ -1,5 +1,6 @@
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import { random } from "./motion";
+import { darken, mixColor, type Lighting } from "./rig/paint";
 
 export type TimeOfDay = "dawn" | "morning" | "noon" | "golden" | "dusk" | "night" | "overcast";
 export type Weather = "none" | "mist" | "rain" | "snow" | "fireflies" | "petals" | "leaves";
@@ -50,16 +51,28 @@ export const palettes: Record<TimeOfDay, Palette> = {
   overcast: { sky: ["#7f8b98", "#a9b3bd", "#cdd3d9"], haze: "#b9c1c8", tint: "#9aa7b4", tintAlpha: 0.15, dark: 0.12 },
 };
 
+/** Ánh sáng chiếu lên nhân vật theo giờ trong ngày: hướng từ vị trí mặt trời, màu bóng lấy từ bầu trời, nắng thấp thì có viền sáng. */
+export function lightingFor(set: SetSpec): Lighting {
+  const time = set.time ?? "morning";
+  if (set.interior) return { dir: [0.55, -0.83], shade: "#5a3d4a", strength: 0.34 };
+  const palette = palettes[time];
+  const strength = { dawn: 0.38, morning: 0.32, noon: 0.34, golden: 0.42, dusk: 0.46, night: 0.5, overcast: 0.18 }[time];
+  const [x, y] = palette.sun ? [(palette.sun[0] - 0.5) * 2.2, -Math.min(1.6, Math.max(0.35, -palette.sun[1] / 500))] : [0, -1];
+  const length = Math.hypot(x, y);
+  const low = time === "golden" || time === "dusk" || time === "dawn";
+  return {
+    dir: [x / length, y / length],
+    shade: mixColor(darken(palette.sky[0], 0.2), "#3a2f5a", 0.35),
+    strength,
+    rim: low && palette.sun ? mixColor(palette.sun[2], "#ffffff", 0.2) : undefined,
+  };
+}
+
 export interface DrawContext { t: number; palette: Palette; time: TimeOfDay; pass: "back" | "front"; lights: Light[]; width: number }
 export interface Light { x: number; y: number; radius: number; color: string; depth: number }
 type Motif = { depth: number; draw: (ctx: SKRSContext2D, element: ElementSpec, context: DrawContext) => void };
 
 const ink = "#2b2522";
-function mixColor(a: string, b: string, t: number) {
-  const parse = (value: string) => [1, 3, 5].map(index => Number.parseInt(value.slice(index, index + 2), 16));
-  const [x, y] = [parse(a), parse(b)];
-  return `#${x.map((value, index) => Math.round(value + (y[index]! - value) * t).toString(16).padStart(2, "0")).join("")}`;
-}
 function outline(ctx: SKRSContext2D, fill: string, width = 3) {
   ctx.fillStyle = fill;
   ctx.fill();

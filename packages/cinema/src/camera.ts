@@ -9,12 +9,13 @@ export const wideHeight = 1080;
 /** Tâm dọc mặc định: mặt đất nằm ở khoảng 84% chiều cao khung toàn cảnh. */
 export const wideCenterY = -wideHeight * 0.34;
 
-export interface Subject { id: string; anchors: CharacterAnchors; facing: 1 | -1 }
+/** side: hướng nhìn trên màn hình (+1 phải, −1 trái, 0 chính diện/sau lưng) để chừa khoảng trống phía trước mặt. */
+export interface Subject { id: string; anchors: CharacterAnchors; side: number }
 
 function single(spec: ShotSpec, subject: Subject, partner: Subject | undefined, aspect: number): View {
   const { anchors } = subject;
   const height = anchors.feet[1] - anchors.top;
-  const lead = partner ? Math.sign(partner.anchors.feet[0] - anchors.feet[0]) || subject.facing : subject.facing;
+  const lead = partner ? Math.sign(partner.anchors.feet[0] - anchors.feet[0]) || subject.side : subject.side;
   const sizes: Record<string, [number, (h: number) => number, number]> = {
     full: [1.45, h => anchors.feet[1] - h * 0.42, 0.1],
     medium: [0.8, h => anchors.top + h * 0.4, 0.16],

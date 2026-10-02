@@ -34,5 +34,6 @@ Thumbs.db
 # Toonflow Cinema: dự án phim của người dùng, bộ nhớ đệm và môi trường giọng đọc
 /projects/
 /packages/cinema/.venv/
+/packages/cinema/scratch/
 /packages/cinema/examples/*/build/
 /packages/cinema/examples/*/out/

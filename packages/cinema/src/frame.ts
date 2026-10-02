@@ -3,9 +3,9 @@ import { resolve } from "node:path";
 import { anchors, drawCharacter, type Pose } from "./character";
 import { frameShot, moveEnd, viewAt, wideCenterY, wideHeight, type Subject, type View } from "./camera";
 import type { FilmSpec } from "./film";
-import { hashSeed, poseAt, random } from "./motion";
+import { hashSeed, poseAt, random, screenSide } from "./motion";
 import { createProps } from "./props";
-import { drawElement, drawGround, drawInterior, drawSky, drawSun, drawWeather, elementDepth, palettes, type ElementSpec, type Light } from "./set";
+import { drawElement, drawGround, drawInterior, drawSky, drawSun, drawWeather, elementDepth, lightingFor, palettes, type ElementSpec, type Light } from "./set";
 import { elementOffset, stateAt, type CompiledScene, type CompiledShot, type Timeline } from "./timeline";
 
 GlobalFonts.registerFromPath(resolve(import.meta.dirname, "../assets/fonts/beVietnamProExtraBold.ttf"), "Cinema");
@@ -82,7 +82,7 @@ export function createRenderer(spec: FilmSpec, timeline: Timeline, width: number
   }
 
   function subjects(scene: CompiledScene, all: Record<string, Pose>, ids: string[]): Subject[] {
-    return ids.filter(id => all[id]).map(id => ({ id, anchors: anchors(timeline.characters[id]!, all[id]!), facing: all[id]!.facing }));
+    return ids.filter(id => all[id]).map(id => ({ id, anchors: anchors(timeline.characters[id]!, all[id]!), side: screenSide(all[id]!.yaw) }));
   }
 
   function view(shot: CompiledShot, scene: CompiledScene, t: number, current: Record<string, Pose>) {
@@ -99,7 +99,7 @@ export function createRenderer(spec: FilmSpec, timeline: Timeline, width: number
     let follow: number | undefined;
     if (shot.spec!.move === "follow") {
       const target = subjects(scene, current, shot.spec!.on.length ? shot.spec!.on : Object.keys(current))[0];
-      if (target) follow = target.anchors.feet[0] + target.facing * start.height * aspect * 0.12;
+      if (target) follow = target.anchors.feet[0] + target.side * start.height * aspect * 0.12;
     }
     return viewAt(shot.spec!, start, end, progress, t, follow);
   }
@@ -192,7 +192,8 @@ export function createRenderer(spec: FilmSpec, timeline: Timeline, width: number
     drawGround(ctx, set, setWidth);
     const plane = elements.filter(item => elementDepth(item) === 1);
     for (const element of plane) drawElement(ctx, element, context("back"), path2d);
-    for (const [id, pose] of Object.entries(current)) drawCharacter(ctx, timeline.characters[id]!, pose, props, t);
+    const lighting = lightingFor(set);
+    for (const [id, pose] of Object.entries(current)) drawCharacter(ctx, timeline.characters[id]!, pose, props, t, lighting);
     for (const element of plane) drawElement(ctx, element, context("front"), path2d);
 
     for (const element of elements.filter(item => elementDepth(item) > 1)) {
