@@ -61,7 +61,7 @@ Lồng tiếng giữ cách làm của srt-whiteboard-animation:
 | `cinema check` (đã có giọng, gồm căn khẩu hình) | khoảng 1 giây |
 | `cinema sheet` (storyboard toàn phim) | khoảng 6 giây |
 | `cinema render --draft` (640×268) | khoảng 37 giây |
-| `cinema render` (1920×804, motion blur) | xem báo cáo `out/*-report.json` |
+| `cinema render` (1920×804, motion blur) | khoảng 2 phút 50 giây; số khung 1993/1993, −17 LUFS |
 | Sửa một câu thoại rồi dựng lại bản nháp | khoảng 17 giây, chỉ dựng lại góc máy chứa câu đó và đoạn chuyển cảnh liền sau |
 
 Đầu ra gồm:
