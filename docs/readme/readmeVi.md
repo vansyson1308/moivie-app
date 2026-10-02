@@ -189,6 +189,7 @@ Toonflow là nền tảng sáng tạo AI mã nguồn mở dành cho sản xuất
 | 🤖 **Agent mở** | Cho phép tùy chỉnh prompt và công cụ, đồng thời hỗ trợ A2A để tùy biến hành vi Agent và phối hợp với Agent bên ngoài. |
 | 🔧 **Tự do kết nối mô hình** | Cấu hình API bên thứ ba hoặc kết nối ComfyUI và LLM chạy cục bộ. |
 | 🌐 **Hỗ trợ đa ngôn ngữ** | Giao diện hỗ trợ 21 ngôn ngữ. |
+| 🎬 **Xưởng phim tiếng Việt** | Dây chuyền kịch bản theo chương → hồ sơ nhân vật/bối cảnh → danh sách cảnh → quay nhiều bản và duyệt → lồng tiếng VieNeu-TTS → ghép phim có phụ đề, tự làm tiếp dự án. Xem [hướng dẫn](../filmStudio.md). |
 
 <a id="languages"></a>
 

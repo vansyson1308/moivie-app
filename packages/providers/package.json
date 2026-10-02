@@ -13,6 +13,7 @@
     "./language/deepSeek": "./src/language/deepSeek.ts",
     "./media/tfRouter": "./src/media/tfRouter.ts",
     "./media/apiMart": "./src/media/apiMart.ts",
-    "./media/meta": "./src/media/meta.ts"
+    "./media/meta": "./src/media/meta.ts",
+    "./media/vieNeu": "./src/media/vieNeu.ts"
   }
 }
