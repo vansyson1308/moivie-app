@@ -4,6 +4,7 @@ import type { ActionName, ActionParams, Facing, Posture } from "./motion";
 import type { SetSpec } from "./set";
 
 export type ShotSize = "establishing" | "wide" | "full" | "medium" | "mediumClose" | "closeUp" | "extremeCloseUp" | "twoShot" | "overShoulder" | "auto";
+export type Transition = "cut" | "dissolve" | "fade" | "fadeWhite" | "wipe" | "iris";
 export type CameraMove = "static" | "push" | "dollyIn" | "dollyOut" | "panLeft" | "panRight" | "tiltUp" | "tiltDown" | "craneUp" | "craneDown" | "follow" | "handheld";
 
 export interface ShotOptions {
@@ -13,7 +14,13 @@ export interface ShotOptions {
   move?: CameraMove;
   /** Giữ cảnh tối thiểu bao nhiêu giây. */
   duration?: number;
-  transition?: "cut" | "fade" | "fadeWhite";
+  /**
+   * Cách góc máy này vào hình: cut (cắt thẳng), dissolve (hòa hình chồng hai cảnh), fade/fadeWhite (qua đen/trắng),
+   * wipe (gạt ngang theo hướng nhân vật), iris (vòng tròn mở ra từ gương mặt nhân vật chính).
+   */
+  transition?: Transition;
+  /** Thời lượng chuyển cảnh (giây). Mặc định: dissolve 0,8 · wipe 0,6 · iris 0,9 · fade 0,6. */
+  transitionDuration?: number;
   /** Làm mờ hậu cảnh; mặc định bật ở cảnh cận. */
   dof?: boolean;
 }

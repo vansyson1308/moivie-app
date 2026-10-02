@@ -8,10 +8,9 @@ import { createRenderer } from "./frame";
 import { ffmpeg } from "./encode";
 import { hashSeed } from "./motion";
 import type { Ambience } from "./set";
-import { collectLines, compile, validate, type CompiledShot, type Timeline } from "./timeline";
+import { collectLines, compile, elementOffset, stateAt, transitionLength, validate, type CompiledShot, type Timeline } from "./timeline";
 import { synthesize, type VoiceEngine, type VoiceResult } from "./voice";
 
-// Mã băm toàn bộ mã nguồn bộ dựng: sửa bộ dựng thì mọi góc máy được dựng lại, không dùng nhầm bản cũ.
 // Mã nguồn bộ dựng (gồm thư mục con như rig/) là một phần khoá đệm: sửa bộ dựng thì dựng lại.
 const sources = (await readdir(import.meta.dirname, { recursive: true })).filter(name => name.endsWith(".ts")).sort();
 export const engineVersion = createHash("sha256").update((await Promise.all(sources.map(name => readFile(join(import.meta.dirname, name), "utf8")))).join("\n")).digest("hex").slice(0, 12);
@@ -39,64 +38,101 @@ export async function checkFfmpeg() {
   catch { throw new Error("Không tìm thấy FFmpeg. Cài FFmpeg vào PATH hoặc đặt biến FFMPEG_PATH trỏ tới tệp chạy ffmpeg."); }
 }
 
-// Khóa đệm chỉ theo nội dung và thời gian tương đối: dời cả cảnh sang chỗ khác trong phim không làm dựng lại.
-function shotKey(spec: FilmSpec, timeline: Timeline, shot: CompiledShot, size: [number, number], fps: number) {
-  const scene = shot.scene === undefined ? undefined : timeline.scenes[shot.scene];
-  const offset = scene?.start ?? shot.start;
+/**
+ * Lát nội dung ảnh hưởng tới hình của một góc máy trong khoảng [from, to] (giây, tuyệt đối): trạng thái mỗi nhân vật lúc đầu
+ * góc máy, các động tác/lời nói/di chuyển vật thể chạm vào khoảng đó (lùi thêm 1,6 s cho quán tính tóc áo sau khi dừng bước).
+ * Mọi mốc thời gian tính tương đối theo đầu cảnh: dời cảnh hay sửa nhịp ở góc máy khác không làm góc máy này dựng lại.
+ */
+function slice(spec: FilmSpec, timeline: Timeline, shot: CompiledShot, from: number, to: number) {
+  if (shot.scene === undefined) return { card: shot.card, duration: shot.duration, at: [from - shot.start, to - shot.start] };
+  const scene = timeline.scenes[shot.scene]!;
+  const [a, b] = [Math.min(from, shot.start) - scene.start, to - scene.start];
+  const touches = (start: number, duration: number, before = 0) => start <= b && start + duration >= a - before;
+  return {
+    spec: shot.spec, start: shot.start - scene.start, duration: shot.duration, window: [a, b], setId: scene.setId, set: scene.set, props: spec.props,
+    cast: Object.keys(scene.initial).map(id => ({
+      id, character: spec.characters[id], state: stateAt(scene, id, a),
+      actions: scene.actions[id]!.filter(action => touches(action.start, action.duration, 1.6)),
+      speech: scene.speech[id]!.filter(line => touches(line.start, line.duration)),
+    })),
+    lines: scene.lines.filter(line => touches(line.start, line.duration + 0.15)).map(line => ({ ...line, voice: undefined })),
+    moves: scene.moves.filter(move => touches(move.start, move.duration)),
+    offsets: (scene.set.elements ?? []).filter(element => element.id).map(element => elementOffset(scene, element.id!, a)),
+  };
+}
+
+export interface Segment { shot: number; start: number; frames: number; file: string }
+
+/**
+ * Mỗi góc máy là một hoặc hai đoạn: phần đầu chồng hình với góc máy trước (hòa hình, gạt, iris) và phần thân chỉ phụ thuộc
+ * chính nó. Sửa góc máy trước chỉ dựng lại phần chuyển cảnh, không dựng lại cả góc máy sau.
+ */
+function segmentsOf(spec: FilmSpec, timeline: Timeline, shot: CompiledShot, size: [number, number], fps: number, directory: string): Segment[] {
   const replacer = (key: string, value: unknown) => value instanceof Float32Array
     ? [value.length, Math.round(value.reduce((sum, item, index) => sum + item * (index % 97), 0) * 1000)]
     : key === "index" || key === "label" ? undefined
     : typeof value === "number" ? Math.round(value * 1000) / 1000 : value;
-  const payload = JSON.stringify({
+  const previous = timeline.shots[shot.index - 1];
+  const next = timeline.shots[shot.index + 1];
+  const kind = shot.spec?.transition;
+  const total = Math.round(shot.duration * fps);
+  const overlap = previous && (kind === "dissolve" || kind === "wipe" || kind === "iris") ? Math.min(total, Math.round(transitionLength(shot) * fps)) : 0;
+  const base = {
     engineVersion, size, fps, look: spec.options.look, subtitles: spec.options.subtitles,
-    shot: { ...shot, start: shot.start - offset }, scene: scene && { ...scene, start: 0, lines: undefined },
-    lines: timeline.lines.filter(line => line.start < shot.start + shot.duration && line.start + line.duration + 0.15 > shot.start)
-      .map(line => ({ ...line, start: line.start - offset, voice: undefined })),
-    characters: scene ? Object.keys(scene.initial).map(id => spec.characters[id]) : [], props: spec.props,
-    next: timeline.shots[shot.index + 1]?.spec?.transition ?? (timeline.shots[shot.index + 1] ? (timeline.shots[shot.index + 1]!.card ? "card" : "") : "end"),
-    previous: timeline.shots[shot.index - 1]?.card ? "card" : "",
-  }, replacer);
-  return createHash("sha256").update(payload).digest("hex").slice(0, 20);
+    shot: slice(spec, timeline, shot, shot.start, shot.start + shot.duration),
+    previous: previous?.card ? "card" : "",
+    next: next ? next.card ? "card" : `${next.spec?.transition ?? ""}:${transitionLength(next)}` : "end",
+  };
+  const segment = (from: number, frames: number, blend?: unknown): Segment => {
+    const key = createHash("sha256").update(JSON.stringify({ ...base, from, frames, blend }, replacer)).digest("hex").slice(0, 20);
+    return { shot: shot.index, start: shot.start + from / fps, frames, file: join(directory, `${key}.mp4`) };
+  };
+  if (!overlap) return [segment(0, total)];
+  const head = segment(0, overlap, slice(spec, timeline, previous!, previous!.start, shot.start + overlap / fps));
+  return overlap < total ? [head, segment(overlap, total - overlap)] : [head];
 }
 
-/** Dựng các góc máy song song trên nhiều nhân CPU; góc máy không đổi thì dùng lại bản đã dựng. */
+/** Dựng các đoạn song song trên nhiều nhân CPU; đoạn không đổi thì dùng lại bản đã dựng. */
 async function renderShots(project: Project, timeline: Timeline, options: RenderOptions, fps: number, size: [number, number], indexes: number[]) {
   const directory = join(project.directory, "build", options.draft ? "shotsDraft" : "shots");
   await mkdir(directory, { recursive: true });
-  const files = indexes.map(index => join(directory, `${shotKey(project.spec, timeline, timeline.shots[index]!, size, fps)}.mp4`));
-  const pending: number[] = [];
-  for (const [position, index] of indexes.entries()) if (!await access(files[position]!).then(() => true, () => false)) pending.push(index);
-  if (!pending.length) return files;
-  // Góc máy dài làm trước để các luồng xong gần cùng lúc.
-  pending.sort((a, b) => timeline.shots[b]!.duration - timeline.shots[a]!.duration);
+  const segments = indexes.flatMap(index => segmentsOf(project.spec, timeline, timeline.shots[index]!, size, fps, directory));
+  const pending: Segment[] = [];
+  for (const segment of segments) {
+    if (!await access(segment.file).then(() => true, () => false) && !pending.some(item => item.file === segment.file)) pending.push(segment);
+  }
+  if (!pending.length) return segments.map(segment => segment.file);
+  // Đoạn dài làm trước để các luồng xong gần cùng lúc.
+  pending.sort((a, b) => b.frames - a.frames);
   const cores = navigator.hardwareConcurrency || 2;
   const count = Math.max(1, Math.min(pending.length, Math.ceil(cores * 0.75), Number(process.env.CINEMA_WORKERS) || 8));
   const threads = Math.max(1, Math.floor(cores / count));
-  const fileOf = (index: number) => files[indexes.indexOf(index)]!;
-  options.log(`  ${pending.length} góc máy cần dựng · ${count} luồng song song`);
+  options.log(`  ${pending.length} đoạn cần dựng · ${count} luồng song song`);
   await new Promise<void>((resolve, reject) => {
     let running = count;
     let failed = false;
     for (let worker = 0; worker < count; worker++) {
       const thread = new Worker(new URL("./shotWorker.ts", import.meta.url).href);
+      let current: Segment | undefined;
       const next = () => {
-        const index = pending.shift();
-        if (index === undefined || failed) {
+        current = pending.shift();
+        if (!current || failed) {
           thread.terminate();
           if (--running === 0 && !failed) resolve();
           return;
         }
-        thread.postMessage({ job: { index, file: fileOf(index) } });
+        thread.postMessage({ job: current });
       };
-      thread.onmessage = (event: MessageEvent<{ done?: number; failed?: number; seconds?: number; error?: string }>) => {
-        if (event.data.failed !== undefined) {
+      thread.onmessage = (event: MessageEvent<{ done?: boolean; error?: string; seconds?: number }>) => {
+        if (event.data.error !== undefined) {
           failed = true;
           thread.terminate();
           reject(new Error(event.data.error));
           return;
         }
-        const shot = timeline.shots[event.data.done!]!;
-        options.log(`  🎬 ${shot.label} · ${shot.duration.toFixed(1)}s · ${event.data.seconds!.toFixed(1)}s dựng`);
+        const shot = timeline.shots[current!.shot]!;
+        const part = current!.frames === Math.round(shot.duration * fps) ? "" : current!.start === shot.start ? " · đoạn chuyển cảnh" : " · phần thân";
+        options.log(`  🎬 ${shot.label}${part} · ${(current!.frames / fps).toFixed(1)}s · ${event.data.seconds!.toFixed(1)}s dựng`);
         next();
       };
       thread.onerror = event => { failed = true; reject(new Error(event.message)); };
@@ -104,7 +140,7 @@ async function renderShots(project: Project, timeline: Timeline, options: Render
       next();
     }
   });
-  return files;
+  return segments.map(segment => segment.file);
 }
 
 function sceneAmbience(timeline: Timeline, index: number): Ambience {
@@ -124,7 +160,8 @@ async function renderAudio(project: Project, timeline: Timeline, voices: VoiceRe
   for (const line of timeline.lines) clips.push({ samples: [voices[line.voice]!.samples], start: line.start - from, gain: 1, voice: true });
   for (const [index, scene] of timeline.scenes.entries()) {
     const kind = sceneAmbience(timeline, index);
-    clips.push({ samples: ambience(kind, scene.duration, hashSeed(`${scene.setId}${index}`)), start: scene.start - from, gain: kind === "room" ? 0.15 : 0.22, fade: 0.8 });
+    // Cầu âm thanh (J/L cut): tiếng nền cảnh sau vào trước khi cắt hình 1 giây, tiếng cảnh trước còn vọng 1 giây sau đó.
+    clips.push({ samples: ambience(kind, scene.duration + 2, hashSeed(`${scene.setId}${index}`)), start: scene.start - 1 - from, gain: kind === "room" ? 0.15 : 0.22, fade: 1.2 });
   }
   const segments = [
     ...timeline.scenes.map(scene => ({ start: scene.start, duration: scene.duration, mood: scene.music })),

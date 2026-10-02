@@ -106,6 +106,7 @@ export function compile(spec: FilmSpec, voices: VoiceResult[]): Timeline {
     let current: ShotSpec = { size: "wide", on: [] };
     let shotStart = 0;
     let autoLast = "";
+    let lastSpeaker: string | undefined;
     const openShot = (shot: ShotSpec, start: number) => {
       const last = sceneShots.at(-1);
       if (last) last.duration = start - last.start;
@@ -147,7 +148,10 @@ export function compile(spec: FilmSpec, voices: VoiceResult[]): Timeline {
       }
       const start = beat.with ? previousStart + (beat.delay ?? 0) : local + (beat.delay ?? 0);
       if (!sceneShots.length && current.size !== "auto") openShot(current, sceneHead);
-      if (!beat.with) auto({ kind: beat.kind, who: "who" in beat ? beat.who : undefined, action: beat.kind === "act" ? beat.action : undefined }, start);
+      // L-cut khi đổi người nói ở câu dài: giữ hình người vừa nói (phản ứng) thêm nửa giây khi tiếng người mới đã vào rồi mới cắt.
+      const lCut = beat.kind === "say" && lastSpeaker !== undefined && lastSpeaker !== beat.who && voices[voiceIndex]!.duration > 2.4;
+      if (!beat.with) auto({ kind: beat.kind, who: "who" in beat ? beat.who : undefined, action: beat.kind === "act" ? beat.action : undefined }, lCut ? start + lineLead + 0.45 : start);
+      if (beat.kind === "say") lastSpeaker = beat.who;
       let end = start;
       if (beat.kind === "say" || beat.kind === "narrate") {
         const voice = voices[voiceIndex]!;
@@ -240,4 +244,12 @@ export function elementOffset(scene: CompiledScene, id: string, t: number) {
     offset = move.from + (move.to - move.from) * eased - ((scene.set.elements ?? []).find(element => element.id === id)?.x ?? 0);
   }
   return offset;
+}
+
+/** Thời lượng chuyển cảnh vào một góc máy; 0 khi cắt thẳng. Không dài quá nửa góc máy. */
+export function transitionLength(shot: CompiledShot) {
+  const kind = shot.spec?.transition ?? "cut";
+  if (kind === "cut") return 0;
+  const length = shot.spec?.transitionDuration ?? { dissolve: 0.8, wipe: 0.6, iris: 0.9, fade: 0.6, fadeWhite: 0.6 }[kind];
+  return Math.min(length, shot.duration / 2);
 }

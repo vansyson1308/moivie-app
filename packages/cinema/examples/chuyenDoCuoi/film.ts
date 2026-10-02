@@ -83,7 +83,7 @@ film.scene("giuaSong", {
   tu: { x: 780, facing: "right", ride: "do", hold: "oar" },
   lan: { x: 960, facing: "left", posture: "sit", ride: "do", hold: "letter" },
 }, s => {
-  s.shot("establishing", { move: "follow", on: "tu" })
+  s.shot("establishing", { move: "follow", on: "tu", transition: "dissolve", transitionDuration: 1.2 })
     .act("tu", "row", { duration: 7 })
     .move("do", { to: 1900, duration: 9, with: true })
     .narrate("Con đò trôi chậm giữa dòng, như muốn kéo dài thêm một chút.", { with: true, delay: 1 });
@@ -99,7 +99,7 @@ film.scene("benKia", {
   tu: { x: 1640, facing: "left", ride: "do", hold: "oar" },
   lan: { x: 1300, facing: "right" },
 }, s => {
-  s.shot("medium", { on: ["lan"] })
+  s.shot("medium", { on: ["lan"], transition: "dissolve", transitionDuration: 1 })
     .say("lan", "Mai con sẽ đi cầu. Nhưng con sẽ nhớ chuyến đò của ông mãi.", { emotion: "tender" })
     .act("lan", "bow");
   s.shot("wide", { move: "dollyOut" })

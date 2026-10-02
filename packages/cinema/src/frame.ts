@@ -6,7 +6,7 @@ import type { FilmSpec } from "./film";
 import { hashSeed, poseAt, random, screenSide } from "./motion";
 import { createProps } from "./props";
 import { drawElement, drawGround, drawInterior, drawSky, drawSun, drawWeather, elementDepth, lightingFor, palettes, type ElementSpec, type Light } from "./set";
-import { elementOffset, stateAt, type CompiledScene, type CompiledShot, type Timeline } from "./timeline";
+import { elementOffset, stateAt, transitionLength, type CompiledScene, type CompiledShot, type Timeline } from "./timeline";
 
 GlobalFonts.registerFromPath(resolve(import.meta.dirname, "../assets/fonts/beVietnamProExtraBold.ttf"), "Cinema");
 
@@ -25,6 +25,11 @@ export function createRenderer(spec: FilmSpec, timeline: Timeline, width: number
   const smallCtx = small.getContext("2d");
   const blurred = createCanvas(small.width, small.height);
   const blurredCtx = blurred.getContext("2d");
+  // Khung của góc máy trước, giữ lại để hòa hình / gạt / mở vòng tròn sang góc máy mới.
+  const under = createCanvas(width, height);
+  const underCtx = under.getContext("2d");
+  // Tâm vòng iris: gương mặt nhân vật chính của góc máy vừa vẽ (toạ độ màn hình).
+  let focus: [number, number] = [width / 2, height / 2];
   const props = createProps(spec.props);
   const paths = new Map<string, Path2D>();
   const path2d = (data: string) => paths.get(data) ?? paths.set(data, new Path2D(data)).get(data)!;
@@ -193,6 +198,15 @@ export function createRenderer(spec: FilmSpec, timeline: Timeline, width: number
     const plane = elements.filter(item => elementDepth(item) === 1);
     for (const element of plane) drawElement(ctx, element, context("back"), path2d);
     const lighting = lightingFor(set);
+    const lead = current[shot.spec!.on[0] ?? ""] ?? Object.values(current)[0];
+    const leadId = shot.spec!.on[0] ?? Object.keys(current)[0];
+    if (lead && leadId) {
+      const head = anchors(timeline.characters[leadId]!, lead).head;
+      const [x, y] = project(camera, 1, setWidth, head[0], head[1]);
+      focus = [Math.min(width, Math.max(0, x)), Math.min(height, Math.max(0, y))];
+    } else {
+      focus = [width / 2, height / 2];
+    }
     for (const [id, pose] of Object.entries(current)) drawCharacter(ctx, timeline.characters[id]!, pose, props, t, lighting);
     for (const element of plane) drawElement(ctx, element, context("front"), path2d);
 
@@ -297,8 +311,9 @@ export function createRenderer(spec: FilmSpec, timeline: Timeline, width: number
     const next = timeline.shots[shot.index + 1];
     const local = time - shot.start;
     let fade = 0;
-    if (shot.spec?.transition === "fade" || shot.spec?.transition === "fadeWhite" || (shot.index > 0 && timeline.shots[shot.index - 1]!.card)) fade = Math.max(fade, 1 - local / 0.6);
-    if (next && (next.card || next.spec?.transition === "fade" || next.spec?.transition === "fadeWhite") && !shot.card) fade = Math.max(fade, 1 - (shot.duration - local) / 0.6);
+    const dip = (item?: CompiledShot) => item?.spec?.transition === "fade" || item?.spec?.transition === "fadeWhite";
+    if (dip(shot) || (shot.index > 0 && timeline.shots[shot.index - 1]!.card)) fade = Math.max(fade, 1 - local / (transitionLength(shot) || 0.6));
+    if (next && (next.card || dip(next)) && !shot.card) fade = Math.max(fade, 1 - (shot.duration - local) / (transitionLength(next) || 0.6));
     if (!next && !shot.card) fade = Math.max(fade, 1 - (shot.duration - local) / 0.8);
     if (fade > 0) {
       ctx.globalAlpha = Math.min(1, fade);
@@ -328,13 +343,66 @@ export function createRenderer(spec: FilmSpec, timeline: Timeline, width: number
     }
   }
 
+  function drawRaw(shot: CompiledShot, time: number) {
+    if (shot.card) drawCard(shot, time);
+    else drawScene(shot, timeline.scenes[shot.scene!]!, time);
+  }
+
+  /**
+   * Chuyển cảnh chồng hình diễn ra trong những khung đầu của góc máy mới: góc máy cũ được vẽ tiếp (cảnh của nó vẫn
+   * chạy theo thời gian) rồi trộn với góc máy mới. Mỗi góc máy vẫn là một tệp độc lập, ghép nối không cần mã hoá lại.
+   */
+  function blend(shot: CompiledShot, time: number) {
+    const kind = shot.spec?.transition;
+    const length = transitionLength(shot);
+    const previous = timeline.shots[shot.index - 1];
+    const local = time - shot.start;
+    if (!previous || !length || local >= length || (kind !== "dissolve" && kind !== "wipe" && kind !== "iris")) return;
+    const p = local / length;
+    const eased = p * p * (3 - 2 * p);
+    const [fx, fy] = focus;
+    underCtx.resetTransform();
+    underCtx.drawImage(canvas, 0, 0);
+    drawRaw(previous, time);
+    // Lúc này canvas là góc máy cũ, under là góc máy mới: đặt góc máy mới lên trên theo mặt nạ của kiểu chuyển.
+    ctx.resetTransform();
+    ctx.save();
+    if (kind === "dissolve") {
+      ctx.globalAlpha = eased;
+      ctx.drawImage(under, 0, 0);
+    } else if (kind === "wipe") {
+      // Gạt theo hướng nhìn của nhân vật chính, mép gạt mềm.
+      const subject = shot.spec!.on[0];
+      const scene = shot.scene === undefined ? undefined : timeline.scenes[shot.scene];
+      const toLeft = subject && scene ? Math.sin(stateAt(scene, subject, time - scene.start).yaw) < 0 : false;
+      const edge = width * 0.06;
+      const reach = (width + edge * 2) * eased - edge;
+      const x = toLeft ? width - reach : reach;
+      const mask = ctx.createLinearGradient(x - edge, 0, x + edge, 0);
+      mask.addColorStop(0, toLeft ? "rgba(0,0,0,0)" : "rgba(0,0,0,1)");
+      mask.addColorStop(1, toLeft ? "rgba(0,0,0,1)" : "rgba(0,0,0,0)");
+      underCtx.globalCompositeOperation = "destination-in";
+      underCtx.fillStyle = mask;
+      underCtx.fillRect(0, 0, width, height);
+      underCtx.globalCompositeOperation = "source-over";
+      ctx.drawImage(under, 0, 0);
+    } else {
+      const radius = Math.hypot(Math.max(fx, width - fx), Math.max(fy, height - fy)) * eased;
+      const circle = new Path2D();
+      circle.arc(fx, fy, Math.max(0.5, radius), 0, Math.PI * 2);
+      ctx.clip(circle);
+      ctx.drawImage(under, 0, 0);
+    }
+    ctx.restore();
+  }
+
   return {
     canvas,
     shotAt,
     draw(time) {
       const shot = shotAt(time);
-      if (shot.card) drawCard(shot, time);
-      else drawScene(shot, timeline.scenes[shot.scene!]!, time);
+      drawRaw(shot, time);
+      blend(shot, time);
       finish(shot, time);
     },
   };

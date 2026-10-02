@@ -1,6 +1,7 @@
 import { encodeShot } from "./encode";
 import { createRenderer, type Renderer } from "./frame";
 import type { FilmSpec } from "./film";
+import type { Segment } from "./render";
 import type { Timeline } from "./timeline";
 
 declare const self: Worker;
@@ -9,8 +10,8 @@ interface Setup { spec: FilmSpec; timeline: Timeline; size: [number, number]; fp
 let setup: Setup | undefined;
 let renderer: Renderer | undefined;
 
-// Mỗi luồng giữ một bộ dựng riêng và nhận lần lượt từng góc máy từ tiến trình chính.
-self.onmessage = async (event: MessageEvent<{ setup?: Setup; job?: { index: number; file: string } }>) => {
+// Mỗi luồng giữ một bộ dựng riêng và nhận lần lượt từng đoạn từ tiến trình chính.
+self.onmessage = async (event: MessageEvent<{ setup?: Setup; job?: Segment }>) => {
   if (event.data.setup) {
     setup = event.data.setup;
     renderer = createRenderer(setup.spec, setup.timeline, ...setup.size);
@@ -19,9 +20,9 @@ self.onmessage = async (event: MessageEvent<{ setup?: Setup; job?: { index: numb
   const job = event.data.job!;
   const started = performance.now();
   try {
-    await encodeShot(renderer!, setup!.timeline.shots[job.index]!, job.file, setup!);
-    self.postMessage({ done: job.index, seconds: (performance.now() - started) / 1000 });
+    await encodeShot(renderer!, job, setup!);
+    self.postMessage({ done: true, seconds: (performance.now() - started) / 1000 });
   } catch (error) {
-    self.postMessage({ failed: job.index, error: error instanceof Error ? error.message : String(error) });
+    self.postMessage({ error: error instanceof Error ? error.message : String(error) });
   }
 };
