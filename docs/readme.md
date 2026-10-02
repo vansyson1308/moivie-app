@@ -34,7 +34,7 @@
 
 - [使用教程](https://qcn7xdsqgc4z.feishu.cn/docx/RXFqdgR2Xo0dXZxGfd0cZCGgnwf)：日常操作与创作流程。
 - [开发与扩展指南](./development.md)：源码运行、插件扩展、桌面打包和更新发布。
-- [Xưởng phim tiếng Việt](./filmStudio.md)：分章剧本 → 角色/场景档案 → 镜头表 → 多版拍摄与审片 → VieNeu 配音 → 成片合成。
+- [Toonflow Cinema](./cinema.md)：由编码 Agent 编写 `film.ts`，本机编译成带越南语配音（VieNeu-TTS）、字幕与配乐的动画影片，无需 API Key。
 - [贡献指南](../CONTRIBUTING.md)与[开发规范](../AGENTS.md)：参与项目的约定。
 - [多语言维护说明](../packages/i18n/readme.md)：字典抽取、动态文案、前后端接入和语言回退。
 - [多语言回归记录](../packages/i18n/regression.md)：已完成的检查与已知范围。
@@ -46,7 +46,7 @@
 docs/
   readme.md          文档入口
   development.md     开发与扩展指南
-  filmStudio.md      越南语电影工坊架构说明
+  cinema.md          本机动画电影引擎架构说明
   readme/            各语言项目介绍
   images/            标识、认证与社区图片
     screenshots/     产品截图
