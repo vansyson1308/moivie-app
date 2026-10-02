@@ -23,23 +23,25 @@ Kịch bản theo chương ─► Hồ sơ diễn viên/bối cảnh ─► Danh
 | Khối | Tệp | Việc |
 | --- | --- | --- |
 | Ngôn ngữ kịch bản | `src/film.ts` | `createFilm`, `cast`, `set`, `prop`, `chapter`, `scene` → `shot`, `say`, `narrate`, `act`, `move`, `wait` |
-| Biên dịch | `src/timeline.ts` | Kiểm tra chéo, lập lịch nhịp, máy tự chia cảnh hội thoại, trạng thái thế giới theo thời gian, mốc cắt trên lưới khung hình |
-| Diễn viên số | `src/character.ts` | Nhân vật tham số: 8 kiểu tóc, 6 trang phục Việt, 4 loại nón mũ, râu, kính, 8 biểu cảm, 4 khẩu hình, nước mắt |
-| Diễn xuất | `src/motion.ts` | 25 động tác, thở, chớp mắt theo lịch tất định, ánh nhìn về người nói, cử chỉ khi nói câu dài |
-| Bối cảnh | `src/set.ts`, `src/props.ts` | Khoảng 30 mô-típ, 7 bảng màu theo giờ, thời tiết, nguồn sáng, đạo cụ cầm tay, vật thể agent tự vẽ bằng SVG path |
+| Biên dịch | `src/timeline.ts` | Kiểm tra chéo, lập lịch nhịp, máy tự chia cảnh hội thoại (có L-cut), trạng thái thế giới theo thời gian, mốc cắt trên lưới khung hình |
+| Diễn viên 2.5D | `src/character.ts`, `src/rig/paint.ts` | Khung xương 3D chiếu theo góc quay liên tục (chính diện, 3/4, nghiêng, sau lưng); bàn tay có ngón, 6 dáng tay; tô cel theo hướng sáng của cảnh, viền màu, viền ngược sáng; mắt hạnh nhân, tóc có lọn và vòng sáng; chân luôn chạm đất |
+| Diễn xuất | `src/motion.ts` | 25 động tác cho tay trái/phải, quay người qua chính diện, dáng đi gập gối, vận tốc hình thang, quán tính tóc áo, gió lay, đầu và mắt nhìn người nói, nhấn đầu theo âm tiết mạnh |
+| Khẩu hình | `src/lipSync.ts` | Tìm hạt nhân âm tiết trong giọng (lọc dải nguyên âm, kiểu de Jong–Wempe), căn với chữ bằng quy hoạch động neo dấu câu, ánh xạ phụ âm đầu – nguyên âm – âm cuối tiếng Việt sang 9 khẩu hình Preston Blair, làm mượt kiểu Rhubarb |
+| Bối cảnh | `src/set.ts`, `src/props.ts` | Khoảng 30 mô-típ, 7 bảng màu theo giờ, thời tiết, tia nắng, bloom, phản chiếu mặt nước, chỉnh màu lift–gain, đạo cụ cầm tay lật theo hướng nhân vật |
 | Máy quay | `src/camera.ts` | Cỡ cảnh tính từ khung xương thật, khoảng trống hướng nhìn, qua vai, góc thấp/cao/nghiêng, 12 chuyển động |
-| Khung hình | `src/frame.ts` | Thị sai nhiều lớp, phối cảnh không khí, độ sâu trường ảnh, chỉnh màu, vignette, hạt phim, phụ đề, thẻ chương, danh đề |
-| Âm thanh | `src/voice.ts`, `src/audio.ts` | VieNeu-TTS (gọi trực tiếp trong Python hoặc qua máy chủ), đường bao giọng để nhép miệng, nhạc tự sinh theo tâm trạng, tiếng nền, tự hạ nhạc khi có thoại |
-| Dựng | `src/render.ts`, `src/encode.ts`, `src/shotWorker.ts` | Dựng song song nhiều nhân CPU, bộ nhớ đệm theo nội dung từng góc máy, chuẩn âm lượng −16 LUFS, tự kiểm số khung |
+| Khung hình | `src/frame.ts` | Thị sai nhiều lớp, độ sâu trường ảnh, motion blur màn trập 180°, hòa hình/gạt/iris/qua đen, vignette, hạt phim, phụ đề, thẻ chương, danh đề |
+| Âm thanh | `src/voice.ts`, `src/audio.ts` | VieNeu-TTS, nhạc tự sinh theo tâm trạng, tiếng nền nối cầu giữa các cảnh, tiếng động khớp hình (bước chân theo mặt nền, mái chèo, tiếp đất, áo quần, giấy), pan theo vị trí trên màn hình, vang phòng |
+| Dựng | `src/render.ts`, `src/encode.ts`, `src/shotWorker.ts` | Dựng song song nhiều nhân CPU, bộ nhớ đệm theo lát nội dung từng góc máy (đoạn chuyển cảnh tách riêng), khổ 16:9 / 2,39:1 / 1,85:1 / dọc / vuông, 1080p hoặc 4K, chuẩn âm lượng −16 LUFS, tự kiểm số khung |
+| Trong ứng dụng | `apps/server/src/utils/cinema`, `routes/cinema/run.ts`, `packages/tools/cinema`, `packages/nodes/cinemaNode`, `packages/skills/cinema` | API dựng phim truyền nhật ký qua SSE, công cụ `cinema` cho Agent, node **Phim** trên canvas, kỹ năng làm phim cho Agent, đóng gói desktop |
 
 ## Tinh hoa của bốn dự án, làm lại không cần API
 
 | Dự án | Ý tưởng gốc | Trong Toonflow Cinema |
 | --- | --- | --- |
 | [StoryMem](https://github.com/Kevin-thu/StoryMem) | Bộ nhớ khung hình xuyên cảnh để giữ nhân vật nhất quán | **Nhất quán theo cấu tạo**: nhân vật là một bộ tham số, không phải ảnh tham chiếu, nên khung thứ 1 và khung thứ 10.000 giống hệt nhau. "Ký ức" là trạng thái thế giới (vị trí, hướng, tư thế, đồ đang cầm) được biên dịch liên tục giữa các góc máy. |
-| [LongCat-Video](https://github.com/meituan-longcat/LongCat-Video) | Sinh tiếp video; nhân vật chuyển động theo âm thanh | **Nối tiếp tuyệt đối**: một cảnh là một không gian liên tục, mọi góc máy cắt ra từ cùng một dòng thời gian nên không có điểm nối. **Hoạt hình theo âm thanh**: độ mở miệng theo đường bao năng lượng của giọng VieNeu 50 lần/giây, khẩu hình theo nguyên âm của từng âm tiết tiếng Việt, đầu nhấp và tay cử chỉ theo nhịp nói; nhiều người nói lần lượt, người nghe nhìn về người nói. |
-| [AIMovieStudio v2](https://github.com/Heroesjouney/AIMovieStudiov2) | Dàn cảnh, máy quay, timeline | **Máy quay ảo thật**: cỡ cảnh được tính từ khung xương nhân vật, bố cục một phần ba với khoảng trống hướng nhìn, qua vai, góc thấp/cao/nghiêng, các chuyển động dolly, pan, tilt, crane, bám theo, máy cầm tay. Hậu cảnh nhiều lớp thị sai (multiplane), độ sâu trường ảnh, phối cảnh không khí. Quy tắc trục 180° tự đúng vì máy quay nhìn vào cùng một sân khấu. |
-| [KupkaProd](https://github.com/Matticusnicholas/KupkaProd-Cinema-Pipeline) | Chia cảnh → quay nhiều bản → chọn → ghép, làm tiếp dự án | **Vòng duyệt gần như miễn phí**: `cinema sheet` dựng storyboard 3 khung mỗi góc máy trong vài giây để agent tự xem và chấm, sửa mã, dựng lại. **Làm tiếp dự án**: mỗi góc máy được nhớ đệm theo nội dung, sửa một cảnh chỉ dựng lại cảnh đó; giọng đọc nhớ đệm theo câu. |
+| [LongCat-Video](https://github.com/meituan-longcat/LongCat-Video) | Sinh tiếp video; nhân vật chuyển động theo âm thanh | **Nối tiếp tuyệt đối**: một cảnh là một không gian liên tục, mọi góc máy cắt ra từ cùng một dòng thời gian nên không có điểm nối. **Hoạt hình theo âm thanh**: khẩu hình căn đúng thời điểm từng âm tiết tìm được trong chính giọng VieNeu (môi khép đúng lúc "m, b, p", tròn môi ở "o, u", mở rộng ở "a"), độ mở theo năng lượng giọng, đầu nhấn theo âm tiết mạnh, tay cử chỉ ở câu dài; người nghe quay đầu nhìn người nói. |
+| [AIMovieStudio v2](https://github.com/Heroesjouney/AIMovieStudiov2) | Dàn cảnh, máy quay, timeline | **Máy quay ảo thật**: diễn viên 2.5D quay mọi góc nên máy đặt ở đâu cũng có hình đúng; cỡ cảnh được tính từ khung xương nhân vật, bố cục một phần ba với khoảng trống hướng nhìn, qua vai, góc thấp/cao/nghiêng, các chuyển động dolly, pan, tilt, crane, bám theo, máy cầm tay. Hậu cảnh nhiều lớp thị sai (multiplane), độ sâu trường ảnh, phối cảnh không khí. Quy tắc trục 180° tự đúng vì máy quay nhìn vào cùng một sân khấu. |
+| [KupkaProd](https://github.com/Matticusnicholas/KupkaProd-Cinema-Pipeline) | Chia cảnh → quay nhiều bản → chọn → ghép, làm tiếp dự án | **Vòng duyệt gần như miễn phí**: `cinema sheet` dựng storyboard 3 khung mỗi góc máy trong vài giây để agent tự xem và chấm, sửa mã, dựng lại. **Làm tiếp dự án**: mỗi góc máy được nhớ đệm theo lát nội dung thực sự xuất hiện trong nó; sửa một câu thoại chỉ dựng lại góc máy chứa câu đó; giọng đọc nhớ đệm theo câu. |
 
 Lồng tiếng giữ cách làm của srt-whiteboard-animation:
 
@@ -49,19 +51,22 @@ Lồng tiếng giữ cách làm của srt-whiteboard-animation:
 
 ## Số liệu thực tế
 
-Phim mẫu *Chuyến đò cuối* (77 giây, 3 cảnh, 14 góc máy, 13 câu thoại VieNeu thật) được đo trên máy 4 nhân CPU, không GPU:
+Đo trên máy 4 nhân CPU, không GPU, với phim mẫu *Chuyến đò cuối*:
+- 83 giây, khổ scope 2,39:1;
+- 3 cảnh, 14 góc máy;
+- 13 câu thoại VieNeu thật.
 
 | Việc | Thời gian |
 | --- | --- |
-| `cinema check` | dưới 1 giây (giọng đã nhớ đệm) |
+| `cinema check` (đã có giọng, gồm căn khẩu hình) | khoảng 1 giây |
 | `cinema sheet` (storyboard toàn phim) | khoảng 6 giây |
-| `cinema render --draft` (640×360) | khoảng 26 giây |
-| `cinema render` (1920×1080, 24 hình/giây) | khoảng 2 phút 40 giây |
-| Sửa một câu thoại rồi dựng lại bản nháp | khoảng 20 giây, chỉ dựng lại 7 góc máy của cảnh đó |
+| `cinema render --draft` (640×268) | khoảng 37 giây |
+| `cinema render` (1920×804, motion blur) | xem báo cáo `out/*-report.json` |
+| Sửa một câu thoại rồi dựng lại bản nháp | khoảng 17 giây, chỉ dựng lại góc máy chứa câu đó và đoạn chuyển cảnh liền sau |
 
 Đầu ra gồm:
 
-- Video H.264 1080p.
+- Video H.264 (1080p hoặc 4K, các khổ 16:9, 2,39:1, 1,85:1, dọc, vuông).
 - Âm thanh AAC 48 kHz stereo, chuẩn −16 LUFS.
 - Tệp SRT.
 - Báo cáo có kiểm tra số khung khớp thời lượng.
@@ -76,10 +81,16 @@ bun run cinema render packages/cinema/examples/chuyenDoCuoi/film.ts
 
 Với agent: giao cho nó [`packages/skills/cinema/SKILL.md`](../packages/skills/cinema/SKILL.md), hoặc gõ `/cinema` trong Claude Code, kèm ý tưởng hay truyện. Agent tự viết `projects/<tenPhim>/film.ts`, duyệt storyboard và giao phim.
 
-## Giới hạn hiện tại và hướng phát triển
+## Trong ứng dụng Toonflow
 
-- Nhân vật vẽ ở góc 3/4 và lật trái phải, chưa có góc chính diện hay sau lưng; bàn tay là khối tròn. Có thể nâng cấp bằng nhiều góc nhìn cho mỗi bộ phận.
-- Chuyển cảnh có cắt thẳng và mờ dần qua đen/trắng, chưa có hòa hình (dissolve) chồng hai cảnh.
-- Nhép miệng theo năng lượng và nguyên âm, chưa căn thời điểm từng âm tiết. Có thể thêm bước căn âm tiết giống `anchor_words` của srt-whiteboard-animation.
-- Bộ nhớ đệm tính theo cả cảnh: sửa một nhịp sẽ dựng lại các góc máy cùng cảnh.
-- Chưa có giao diện trong ứng dụng Toonflow. Bộ dựng dùng API Canvas2D giống trình duyệt, nên có thể làm node xem trước trên canvas ở giai đoạn sau.
+- **Agent của app** có công cụ `cinema` và kỹ năng `cinema`:
+  - viết `film.ts` vào workspace;
+  - tự chạy `check` → `sheet` (đọc ảnh storyboard để tự sửa) → `render`.
+  - Bản cài cũ chưa có kỹ năng thì gọi công cụ với `command: "guide"` để đọc hướng dẫn.
+- **Node Phim** trên canvas: nhập đường dẫn `film.ts`, bấm Storyboard, Nháp hoặc Bản cuối, xem nhật ký dựng và kết quả ngay trên node. Đầu ra nối được sang các node video, ảnh.
+- **API** `POST /api/cinema/run`:
+  - nhận `{ requestId, directory, command, film, draft?, shots?, at?, voice? }`;
+  - trả sự kiện SSE `log` / `done` (kèm `outputs`) / `error`;
+  - gửi `command: "cancel"` với cùng `requestId` để dừng.
+- **FFmpeg** lấy theo cấu hình trong chợ plugin; thiếu FFmpeg thì app hiện hướng dẫn cài như các tính năng khác.
+- **Bản desktop** chép kèm bộ dựng cùng phụ thuộc gốc của nền tảng (`apps/desktop/scripts/stageCinema.ts`); môi trường Python của VieNeu đặt trong thư mục dữ liệu.

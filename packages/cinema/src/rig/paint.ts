@@ -79,6 +79,20 @@ export function capsule(path: Path2D, a: Point, b: Point, radius: number) {
   return path;
 }
 
+/** Khúc côn: hai đầu tròn bán kính khác nhau, hai cạnh tiếp tuyến (đùi, cẳng chân, cánh tay thuôn). */
+export function cone(path: Path2D, a: Point, b: Point, ra: number, rb: number) {
+  const length = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1e-6;
+  const angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
+  // Góc lệch của tiếp tuyến chung ngoài giữa hai đường tròn.
+  const tilt = Math.asin(Math.max(-1, Math.min(1, (ra - rb) / length)));
+  const side = Math.PI / 2 + tilt;
+  path.moveTo(a[0] + Math.cos(angle + side) * ra, a[1] + Math.sin(angle + side) * ra);
+  path.arc(a[0], a[1], ra, angle + side, angle - side + Math.PI * 2);
+  path.arc(b[0], b[1], rb, angle - side, angle + side);
+  path.closePath();
+  return path;
+}
+
 /** Diện tích có dấu (y hướng xuống): dương = cùng chiều với ellipse()/arc() mặc định. */
 function signedArea(points: Point[]) {
   let area = 0;

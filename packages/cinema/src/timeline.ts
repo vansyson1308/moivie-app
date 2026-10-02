@@ -53,7 +53,7 @@ export function validate(spec: FilmSpec) {
       if (beat.kind === "shot") for (const id of beat.spec.on) if (!item.cast[id]) problems.push(`${where}: máy quay nhắm vào "${id}" nhưng nhân vật không có mặt`);
       if (beat.kind === "move" && !ids.has(beat.id)) problems.push(`${where}: không có vật thể id "${beat.id}" để di chuyển`);
       if (beat.kind === "act" && beat.params.prop && !spec.props[beat.params.prop] && !builtInProps.has(beat.params.prop)) problems.push(`${where}: đạo cụ "${beat.params.prop}" chưa được khai báo`);
-      if (beat.kind === "act" && beat.params.at && !["left", "right"].includes(beat.params.at) && !item.cast[beat.params.at]) problems.push(`${where}: "${beat.params.at}" không có mặt trong cảnh`);
+      if (beat.kind === "act" && beat.params.at && !["left", "right", "front", "back"].includes(beat.params.at) && !item.cast[beat.params.at]) problems.push(`${where}: "${beat.params.at}" không có mặt trong cảnh`);
     }
   }
   return problems;

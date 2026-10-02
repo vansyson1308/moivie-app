@@ -1,6 +1,6 @@
 import { Path2D, type SKRSContext2D } from "@napi-rs/canvas";
 import { hashSeed, random } from "./motion";
-import { capsule, darken, defaultLighting, lighten, lineColor, mixColor, paintShape, smoothPath, type Lighting, type Point } from "./rig/paint";
+import { capsule, cone, darken, defaultLighting, lighten, lineColor, mixColor, paintShape, smoothPath, type Lighting, type Point } from "./rig/paint";
 
 export type Expression = "neutral" | "happy" | "sad" | "angry" | "surprised" | "scared" | "thinking" | "tender";
 /** Khẩu hình Preston Blair: A khép môi (m b p), B hé răng, C mở vừa, D mở rộng, E tròn, F chu môi, G răng chạm môi (ph v), H lưỡi (l), X nghỉ. */
@@ -140,7 +140,7 @@ const limb = (swing = 0, bend = 0, spread = 0): Limb => ({ swing, bend, spread }
 export function restPose(character: Character, x = 0): Pose {
   return {
     x, y: 0, yaw: 0.95, headYaw: 0, headPitch: 0, headRoll: 0, lean: character.age === "elder" ? 0.12 : 0, sway: 0, bob: 0, seat: 0, breath: 0,
-    arms: { left: limb(0.05, 0.12, 0.1), right: limb(0.05, 0.12, 0.1) },
+    arms: { left: limb(0.04, 0.22, 0.17), right: limb(0.06, 0.2, 0.16) },
     legs: { left: limb(0, 0, 0.03), right: limb(0, 0, 0.03) },
     hands: { left: "relaxed", right: "relaxed" },
     expression: "neutral", mouth: 0, viseme: "X", blink: 0, look: [0, 0], tears: 0, hold: {}, flow: [0, 0],
@@ -323,8 +323,9 @@ export function drawCharacter(ctx: SKRSContext2D, character: Character, pose: Po
       draw: () => {
         const radius = b.legRadius * (loose || outfit.style === "aoDai" ? 1.22 : 1);
         const leg = new Path2D();
-        capsule(leg, screen(hipJ), screen(knee), radius);
-        capsule(leg, screen(knee), screen(ankle), radius * 0.86);
+        // Đùi to dần về hông, ống quyển thon về cổ chân (hai khúc côn nối nhau thay vì ống đều).
+        cone(leg, screen(hipJ), screen(knee), radius * 1.12, radius * 0.9);
+        cone(leg, screen(knee), screen(ankle), radius * 0.9, radius * (loose ? 0.95 : 0.72));
         shade(legColor, leg, radius * 0.55);
         const foot = new Path2D();
         capsule(foot, screen(add3(ankle, [0, b.legRadius * 0.15, -b.foot * 0.12])), screen(toe), b.legRadius * 0.62);
@@ -869,7 +870,7 @@ function drawBeard(ctx: SKRSContext2D, character: Character, at: Projector, faci
 /** Đường chân tóc theo kinh độ u: cao ở trán, thấp dần ra gáy; mỗi kiểu tóc một đường. */
 function hairline(style: HairStyle, u: number) {
   const settings: Record<HairStyle, [number, number, number]> = {
-    short: [0.48, 0.22, -0.42], sidePart: [0.45, 0.2, -0.42], long: [0.4, -0.08, -0.95], bun: [0.45, 0.2, -0.4],
+    short: [0.6, 0.22, -0.42], sidePart: [0.58, 0.2, -0.42], long: [0.4, -0.08, -0.95], bun: [0.45, 0.2, -0.4],
     ponytail: [0.45, 0.2, -0.4], bald: [2, 2, 2], curly: [0.5, 0.16, -0.45], bob: [0.24, -0.55, -0.7],
   };
   const [front, side, back] = settings[style];
@@ -923,7 +924,7 @@ function drawHairCap(ctx: SKRSContext2D, character: Character, pose: Pose, cente
     const edge = (Math.abs(index - steps / 2) / (steps / 2)) ** 4;
     // Mép tóc trước trán thành từng lọn nhọn (mái), không phải đường cắt trơn như mũ.
     const front = Math.max(0, Math.cos(u));
-    const clump = style === "bob" ? 0 : Math.abs(Math.sin(u * 9 + 0.6)) ** 0.7 * 0.07 * front;
+    const clump = style === "bob" ? 0 : Math.abs(Math.sin(u * 9 + 0.6)) ** 0.7 * (style === "short" || style === "sidePart" ? 0.035 : 0.07) * front;
     const [x, y] = at(u, hairline(style, u) - clump, 1.0 + (lift - 1) * edge);
     loop.push([x, y]);
   }

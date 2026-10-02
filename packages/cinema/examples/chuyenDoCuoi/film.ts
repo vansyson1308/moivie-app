@@ -74,7 +74,10 @@ film.scene("benDo", {
     .say("lan", "Ông Tư ơi, cho con qua sông với!", { emotion: "happy" })
     .act("tu", "stand")
     .say("tu", "Lên đi con. Chuyến này ông không lấy tiền.", { emotion: "tender" })
-    .say("lan", "Sao vậy ông?", { emotion: "surprised" })
+    .say("lan", "Sao vậy ông?", { emotion: "surprised" });
+  // Ông Tư quay mặt nhìn thẳng ra sông (thẳng vào máy) khi nói câu nặng lòng nhất.
+  s.shot("medium", { on: "tu", move: "push" })
+    .act("tu", "turn", { at: "front" })
     .say("tu", "Chuyến cuối rồi. Mai có cầu, đâu còn ai cần đò nữa.", { emotion: "sad" });
   s.shot("closeUp", { on: "lan", move: "push" })
     .say("lan", "Con vẫn cần mà ông.", { emotion: "sad" });
@@ -108,7 +111,9 @@ film.scene("benKia", {
     .act("lan", "wave", { with: true })
     .move("do", { to: 2600, duration: 7, with: true, delay: 1.2 })
     .narrate("Có những con đò không bao giờ cập bến cuối cùng.", { with: true, delay: 2 })
-    .narrate("Nó neo lại, trong lòng người ở lại.");
+    .act("lan", "turn", { at: "back", with: true, delay: 1.5 })
+    .act("lan", "walk", { to: 520, speed: 0.8 })
+    .narrate("Nó neo lại, trong lòng người ở lại.", { with: true });
 }, { music: "hopeful" });
 
 export default film;
