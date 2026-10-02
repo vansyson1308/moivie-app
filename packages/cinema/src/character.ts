@@ -1,4 +1,5 @@
 import { Path2D, type SKRSContext2D } from "@napi-rs/canvas";
+import { hashSeed, random } from "./motion";
 import { capsule, darken, defaultLighting, lighten, lineColor, mixColor, paintShape, smoothPath, type Lighting, type Point } from "./rig/paint";
 
 export type Expression = "neutral" | "happy" | "sad" | "angry" | "surprised" | "scared" | "thinking" | "tender";
@@ -910,17 +911,20 @@ function drawHairCap(ctx: SKRSContext2D, character: Character, pose: Pose, cente
     }
     return;
   }
-  const lift = style === "curly" ? 1.15 : 1.08;
+  const lift = style === "curly" ? 1.15 : 1.1;
   // Vùng tóc trên mặt cầu tham số (u, v) giao với nửa cầu đang nhìn thấy: đi dọc đường chân tóc giữa hai kinh tuyến biên
   // (hai kinh tuyến này chiếu đúng lên đường viền đầu), rồi theo kinh tuyến lên đỉnh đầu và quay xuống.
   const from = -yaw - Math.PI / 2;
   const to = -yaw + Math.PI / 2;
   const loop: Point[] = [];
-  const steps = 40;
+  const steps = 72;
   for (let index = 0; index <= steps; index++) {
     const u = from + (to - from) * (index / steps);
     const edge = (Math.abs(index - steps / 2) / (steps / 2)) ** 4;
-    const [x, y] = at(u, hairline(style, u), 1.0 + (lift - 1) * edge);
+    // Mép tóc trước trán thành từng lọn nhọn (mái), không phải đường cắt trơn như mũ.
+    const front = Math.max(0, Math.cos(u));
+    const clump = style === "bob" ? 0 : Math.abs(Math.sin(u * 9 + 0.6)) ** 0.7 * 0.07 * front;
+    const [x, y] = at(u, hairline(style, u) - clump, 1.0 + (lift - 1) * edge);
     loop.push([x, y]);
   }
   for (const [u, down] of [[to, false], [from, true]] as const) {
@@ -949,14 +953,42 @@ function drawHairCap(ctx: SKRSContext2D, character: Character, pose: Pose, cente
   paintShape(ctx, region, color, lighting, { depth: rx * 0.3, line });
   ctx.save();
   ctx.clip(region);
-  // Vệt bóng tóc: dải cong song song đỉnh đầu, lệch về phía nguồn sáng.
-  ctx.beginPath();
-  ctx.ellipse(center[0] + lighting.dir[0] * rx * 0.15, center[1] - ry * 0.32, width * 0.62, ry * 0.42, pose.headRoll, Math.PI * 1.15, Math.PI * 1.78);
-  ctx.lineWidth = ry * 0.085;
+  // Sợi tóc: vài nét mảnh từ xoáy đỉnh đầu chảy xuống mép tóc, màu tối hơn, chỉ ở nửa nhìn thấy.
   ctx.lineCap = "round";
-  ctx.strokeStyle = mixColor(color, "#ffffff", character.age === "elder" ? 0.35 : 0.2);
-  ctx.globalAlpha = 0.75;
-  ctx.stroke();
+  ctx.strokeStyle = mixColor(color, lineColor(color), 0.55);
+  ctx.lineWidth = line * 0.45;
+  ctx.globalAlpha = 0.7;
+  for (let strand = -3; strand <= 3; strand++) {
+    const u = -yaw + strand * 0.38;
+    if (Math.cos(u + yaw) < 0.25) continue;
+    const base = hairline(style, u);
+    const points = [0.85, 0.6, 0.35, 0.1].map(k => at(u + strand * 0.05 * (1 - k), base + 0.08 + (Math.PI / 2 - 0.2 - base) * k, lift * 1.01));
+    ctx.beginPath();
+    ctx.moveTo(points[0]![0], points[0]![1]);
+    for (let index = 1; index < points.length - 1; index++) {
+      const [a, b] = [points[index]!, points[index + 1]!];
+      ctx.quadraticCurveTo(a[0], a[1], (a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+    }
+    ctx.stroke();
+  }
+  // Vòng sáng trên tóc (angel ring): các vệt đứt quãng theo một vĩ tuyến, lệch về phía nguồn sáng.
+  ctx.strokeStyle = mixColor(color, "#ffffff", character.age === "elder" ? 0.4 : 0.3);
+  ctx.globalAlpha = 0.65;
+  const ring = random(hashSeed(character.id));
+  for (let u = -yaw - 1.2 + lighting.dir[0] * 0.3; u < -yaw + 1.2 + lighting.dir[0] * 0.3;) {
+    const length = 0.12 + ring() * 0.22;
+    if (Math.cos(u + yaw) > 0.15 && Math.cos(u + length + yaw) > 0.15) {
+      const v = 0.52 + ring() * 0.06;
+      const [a, b, c] = [at(u, v, lift * 1.01), at(u + length / 2, v + 0.02, lift * 1.01), at(u + length, v, lift * 1.01)];
+      ctx.lineWidth = ry * (0.035 + ring() * 0.03);
+      ctx.beginPath();
+      ctx.moveTo(a[0], a[1]);
+      ctx.quadraticCurveTo(b[0], b[1], c[0], c[1]);
+      ctx.stroke();
+    }
+    u += length + 0.05 + ring() * 0.1;
+  }
+  ctx.globalAlpha = 1;
   ctx.restore();
   if (style === "bun") {
     const [x, y] = at(Math.PI, 0.55, 1.28);
@@ -974,12 +1006,32 @@ function drawBackHair(ctx: SKRSContext2D, character: Character, pose: Pose, cent
     const bottom = (shoulderY + hipY) / 2 - headY + ry * 0.2;
     const sway = pose.flow[0] * 0.8;
     const lower = (x: number, extra = 0): Point => { const point = project([x, bottom + extra, -rz * 0.9]); return [point[0] + sway, point[1]]; };
+    // Mái tóc dài: thuôn dần, đuôi tóc tách thành các lọn nhọn đung đưa lệch pha nhau.
+    const tips = [-0.72, -0.36, 0, 0.36, 0.72].flatMap((x, index): Point[] => {
+      const tip = lower(rx * x * 1.05, ry * (0.12 + (index % 2) * 0.1));
+      const notch = lower(rx * (x + 0.18) * 1.05, -ry * 0.12);
+      tip[0] += sway * (0.15 + index * 0.06);
+      return index < 4 ? [tip, notch] : [tip];
+    });
     const points: Point[] = [
       project([-rx * 1.02, -ry * 0.35, -rz * 0.3]), project([rx * 1.02, -ry * 0.35, -rz * 0.3]),
-      project([rx * 0.98, ry * 1.2, -rz * 0.55]), lower(rx * 0.78), lower(0, ry * 0.15), lower(-rx * 0.78),
-      project([-rx * 0.98, ry * 1.2, -rz * 0.55]),
+      project([rx * 0.98, ry * 1.2, -rz * 0.55]), ...tips.reverse(), project([-rx * 0.98, ry * 1.2, -rz * 0.55]),
     ];
-    paintShape(ctx, smoothPath(points), color, lighting, { depth: rx * 0.3, line });
+    const shape = smoothPath(points);
+    paintShape(ctx, shape, color, lighting, { depth: rx * 0.3, line });
+    ctx.save();
+    ctx.clip(shape);
+    ctx.strokeStyle = mixColor(color, lineColor(color), 0.5);
+    ctx.lineWidth = line * 0.45;
+    ctx.globalAlpha = 0.6;
+    for (const x of [-0.5, -0.15, 0.2, 0.55]) {
+      const [a, b] = [project([rx * x, ry * 0.9, -rz]), lower(rx * x * 0.9, -ry * 0.3)];
+      ctx.beginPath();
+      ctx.moveTo(a[0], a[1]);
+      ctx.quadraticCurveTo(a[0] + sway * 0.2 + rx * 0.05, (a[1] + b[1]) / 2, b[0], b[1]);
+      ctx.stroke();
+    }
+    ctx.restore();
   } else if (character.hair.style === "ponytail") {
     const base = project([0, -ry * 0.25, -rz * 1.05]);
     const tip: Point = [base[0] - Math.sin(yaw) * rx * 0.5 + pose.flow[0], base[1] + ry * 1.6];

@@ -157,12 +157,13 @@ export function createRenderer(spec: FilmSpec, timeline: Timeline, width: number
     const context = (pass: "back" | "front") => ({ t, palette, time: set.time ?? "morning", pass, lights, width: setWidth });
 
     ctx.resetTransform();
+    let sun: ReturnType<typeof drawSun>;
     if (set.interior) {
       ctx.fillStyle = set.interior.wall ?? "#d9c6a5";
       ctx.fillRect(0, 0, width, height);
     } else {
       drawSky(ctx, palette, set.time ?? "morning", width, height, t);
-      drawSun(ctx, palette, set.time ?? "morning", width, project(camera, 0.12, setWidth, 0, -150)[1], unit);
+      sun = drawSun(ctx, palette, set.time ?? "morning", width, project(camera, 0.12, setWidth, 0, -150)[1], unit);
     }
     const depths = [...new Set([...(set.interior ? [0.92] : []), ...elements.map(elementDepth)])].filter(depth => depth < 1).sort((a, b) => a - b);
     // Mỗi lớp: vẽ phần tử → phủ màu chân trời theo độ xa → làm mờ khi máy quay cận → đặt lên khung.
@@ -209,6 +210,22 @@ export function createRenderer(spec: FilmSpec, timeline: Timeline, width: number
     transform(ctx, camera, 1, setWidth);
     drawGround(ctx, set, setWidth);
     const plane = elements.filter(item => elementDepth(item) === 1);
+    // Bóng phản chiếu trên mặt nước: thuyền và người trên thuyền lật quanh mép nước, mờ dần, gợn theo sóng.
+    for (const boat of plane.filter(item => item.type === "boat")) {
+      const scale = boat.scale ?? 1;
+      const water = (boat.y ?? 12) + Math.sin(t * 1.6) * 3 + 26 * scale;
+      const riders = Object.entries(current).filter(([id]) => scene.initial[id]!.ride === boat.id);
+      ctx.save();
+      const below = new Path2D();
+      below.rect((boat.x ?? 0) - 400 * scale, water, 800 * scale, 500 * scale);
+      ctx.clip(below);
+      ctx.translate(0, water * 2);
+      ctx.scale(1, -1);
+      ctx.globalAlpha = 0.22;
+      drawElement(ctx, boat, context("front"), path2d);
+      for (const [id, pose] of riders) drawCharacter(ctx, timeline.characters[id]!, { ...pose, x: pose.x + Math.sin(t * 2.3) * 2 }, props, t, lightingFor(set));
+      ctx.restore();
+    }
     for (const element of plane) drawElement(ctx, element, context("back"), path2d);
     const lighting = lightingFor(set);
     const lead = current[shot.spec!.on[0] ?? ""] ?? Object.values(current)[0];
@@ -260,6 +277,30 @@ export function createRenderer(spec: FilmSpec, timeline: Timeline, width: number
     ctx.resetTransform();
     const screenLights: { x: number; y: number }[] = [];
     if (set.weather && set.weather !== "none") drawWeather(ctx, set.weather, width, height, t, screenLights);
+    // Tia nắng: vài dải sáng toả từ mặt trời khi nắng xiên (bình minh, chiều vàng, hoàng hôn), xoay rất chậm.
+    if (sun && (set.time === "dawn" || set.time === "golden" || set.time === "dusk" || set.time === "morning")) {
+      ctx.globalCompositeOperation = "screen";
+      const reach = Math.hypot(width, height) * 1.1;
+      const rays = random(hashSeed(scene.setId));
+      for (let index = 0; index < 9; index++) {
+        const angle = Math.PI * (0.15 + 0.7 * (index + rays() * 0.6) / 9) + Math.sin(t * 0.05 + index) * 0.03;
+        const spread = 0.025 + rays() * 0.035;
+        // Gốc tia mờ (không lộ đỉnh quạt), đậm nhất cách mặt trời một đoạn rồi tan dần; cận cảnh hậu cảnh đã mờ thì tia nhạt hơn.
+        const strength = Math.round((set.time === "morning" ? 0x1c : 0x30) * (dof ? 0.45 : 1)).toString(16).padStart(2, "0");
+        const gradient = ctx.createRadialGradient(sun.x, sun.y, sun.radius, sun.x, sun.y, reach);
+        gradient.addColorStop(0, "rgba(0,0,0,0)");
+        gradient.addColorStop(0.18, sun.color.length === 7 ? `${sun.color}${strength}` : sun.color);
+        gradient.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.moveTo(sun.x, sun.y);
+        ctx.lineTo(sun.x + Math.cos(angle - spread) * reach, sun.y + Math.sin(angle - spread) * reach);
+        ctx.lineTo(sun.x + Math.cos(angle + spread) * reach, sun.y + Math.sin(angle + spread) * reach);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.globalCompositeOperation = "source-over";
+    }
     // Chỉnh màu theo giờ: tông màu (soft-light), bóng tối (multiply), rồi nguồn sáng phát quang (screen).
     if (palette.tintAlpha) {
       ctx.globalCompositeOperation = "soft-light";
@@ -284,6 +325,29 @@ export function createRenderer(spec: FilmSpec, timeline: Timeline, width: number
       ctx.fillStyle = glow;
       ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
     }
+    ctx.globalCompositeOperation = "source-over";
+    // Bloom: tách vùng rất sáng ở 1/4 độ phân giải, làm nhoè rồi cộng sáng lại — ánh sáng "loang" như qua ống kính thật.
+    smallCtx.resetTransform();
+    smallCtx.clearRect(0, 0, small.width, small.height);
+    smallCtx.filter = "brightness(0.7) contrast(5)";
+    smallCtx.drawImage(canvas, 0, 0, small.width, small.height);
+    smallCtx.filter = "none";
+    blurredCtx.resetTransform();
+    blurredCtx.clearRect(0, 0, blurred.width, blurred.height);
+    blurredCtx.filter = `blur(${(height / 1080 * 7).toFixed(1)}px)`;
+    blurredCtx.drawImage(small, 0, 0);
+    blurredCtx.filter = "none";
+    ctx.globalCompositeOperation = "screen";
+    ctx.globalAlpha = set.time === "night" || set.time === "dusk" ? 0.45 : 0.28;
+    ctx.imageSmoothingQuality = "medium";
+    ctx.drawImage(blurred, 0, 0, width, height);
+    // Chỉnh màu lift–gain: đen nâng lên thành màu tối có sắc (không bao giờ đen kịt), vùng sáng nhuộm theo giờ.
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = palette.lift;
+    ctx.fillRect(0, 0, width, height);
+    ctx.globalCompositeOperation = "multiply";
+    ctx.fillStyle = palette.gain;
+    ctx.fillRect(0, 0, width, height);
     ctx.globalCompositeOperation = "source-over";
   }
 

@@ -39,16 +39,17 @@ export interface SetSpec {
   ambience?: Ambience;
 }
 
-export interface Palette { sky: [string, string, string]; haze: string; tint: string; tintAlpha: number; dark: number; sun?: [number, number, string] }
+/** lift/gain: chỉnh màu kiểu lift–gain của phòng màu: lift nâng vùng tối về một màu (đen mờ có sắc), gain nhuộm vùng sáng. */
+export interface Palette { sky: [string, string, string]; haze: string; tint: string; tintAlpha: number; dark: number; sun?: [number, number, string]; lift: string; gain: string }
 
 export const palettes: Record<TimeOfDay, Palette> = {
-  dawn: { sky: ["#34406e", "#c68ca0", "#f7c894"], haze: "#e9c3ad", tint: "#ff9e7a", tintAlpha: 0.16, dark: 0.08, sun: [0.72, -260, "#ffe2b0"] },
-  morning: { sky: ["#5f9fd8", "#a9d2f0", "#e4f2f8"], haze: "#d6e8f2", tint: "#fff3d6", tintAlpha: 0.08, dark: 0, sun: [0.8, -640, "#fff6d8"] },
-  noon: { sky: ["#3f87d4", "#88c2ef", "#cfe9fb"], haze: "#cfe3f1", tint: "#ffffff", tintAlpha: 0, dark: 0, sun: [0.55, -820, "#ffffff"] },
-  golden: { sky: ["#5c6aa8", "#e79a6a", "#ffcf7d"], haze: "#f2bf8c", tint: "#ff9f43", tintAlpha: 0.22, dark: 0.05, sun: [0.25, -300, "#ffd98a"] },
-  dusk: { sky: ["#232650", "#9a4f78", "#ec8a62"], haze: "#b07386", tint: "#8a4fb0", tintAlpha: 0.2, dark: 0.22, sun: [0.15, -170, "#ffb07a"] },
-  night: { sky: ["#070b1f", "#14204a", "#2a3a6c"], haze: "#25345e", tint: "#2a3f8f", tintAlpha: 0.42, dark: 0.45, sun: [0.75, -760, "#f4f1de"] },
-  overcast: { sky: ["#7f8b98", "#a9b3bd", "#cdd3d9"], haze: "#b9c1c8", tint: "#9aa7b4", tintAlpha: 0.15, dark: 0.12 },
+  dawn: { sky: ["#34406e", "#c68ca0", "#f7c894"], haze: "#e9c3ad", tint: "#ff9e7a", tintAlpha: 0.16, dark: 0.08, sun: [0.72, -260, "#ffe2b0"] , lift: "#241c3a", gain: "#fff0e2" },
+  morning: { sky: ["#5f9fd8", "#a9d2f0", "#e4f2f8"], haze: "#d6e8f2", tint: "#fff3d6", tintAlpha: 0.08, dark: 0, sun: [0.8, -640, "#fff6d8"] , lift: "#0e1a24", gain: "#fffaf0" },
+  noon: { sky: ["#3f87d4", "#88c2ef", "#cfe9fb"], haze: "#cfe3f1", tint: "#ffffff", tintAlpha: 0, dark: 0, sun: [0.55, -820, "#ffffff"] , lift: "#0a0f14", gain: "#ffffff" },
+  golden: { sky: ["#5c6aa8", "#e79a6a", "#ffcf7d"], haze: "#f2bf8c", tint: "#ff9f43", tintAlpha: 0.22, dark: 0.05, sun: [0.25, -300, "#ffd98a"] , lift: "#2a1828", gain: "#ffe8c4" },
+  dusk: { sky: ["#232650", "#9a4f78", "#ec8a62"], haze: "#b07386", tint: "#8a4fb0", tintAlpha: 0.2, dark: 0.22, sun: [0.15, -170, "#ffb07a"] , lift: "#1c1638", gain: "#ffdccc" },
+  night: { sky: ["#070b1f", "#14204a", "#2a3a6c"], haze: "#25345e", tint: "#2a3f8f", tintAlpha: 0.42, dark: 0.45, sun: [0.75, -760, "#f4f1de"] , lift: "#06142a", gain: "#cfdcff" },
+  overcast: { sky: ["#7f8b98", "#a9b3bd", "#cdd3d9"], haze: "#b9c1c8", tint: "#9aa7b4", tintAlpha: 0.15, dark: 0.12, lift: "#182028", gain: "#eef2f6" },
 };
 
 /** Ánh sáng chiếu lên nhân vật theo giờ trong ngày: hướng từ vị trí mặt trời, màu bóng lấy từ bầu trời, nắng thấp thì có viền sáng. */
@@ -647,6 +648,7 @@ export function drawSun(ctx: SKRSContext2D, palette: Palette, time: TimeOfDay, w
   ctx.arc(x, y, radius, 0, Math.PI * 2);
   ctx.fillStyle = color;
   ctx.fill();
+  return { x, y, radius, color };
 }
 
 const groundColors = { grass: "#7aa35a", dirt: "#a9845c", sand: "#e3cf9f", wood: "#9b7350", tile: "#c9b79c", stone: "#9a968e", none: "#000000" };
