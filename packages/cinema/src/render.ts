@@ -17,11 +17,13 @@ export const engineVersion = createHash("sha256").update((await Promise.all(sour
 export interface Project { file: string; directory: string; name: string; spec: FilmSpec }
 export interface RenderOptions { draft?: boolean; voice: VoiceEngine; python?: string; serverUrl?: string; shots?: number[]; log: (message: string) => void }
 
-const sizes = { landscape: [1920, 1080], portrait: [1080, 1920], square: [1080, 1080] } as const;
+// Khổ rạp: scope 2,39:1 và flat 1,85:1 trên bề ngang 1920 (DCI dùng 2048, tỉ lệ giữ nguyên); chiều cao làm chẵn cho yuv420p.
+const sizes = { landscape: [1920, 1080], scope: [1920, 804], flat: [1920, 1038], portrait: [1080, 1920], square: [1080, 1080] } as const;
 
 export function frameSize(spec: FilmSpec, draft = false): [number, number] {
   const [width, height] = sizes[spec.options.format ?? "landscape"];
-  return draft ? [Math.round(width / 3 / 2) * 2, Math.round(height / 3 / 2) * 2] : [width, height];
+  const scale = draft ? 1 / 3 : spec.options.resolution === "4k" ? 2 : 1;
+  return [Math.round(width * scale / 2) * 2, Math.round(height * scale / 2) * 2];
 }
 
 export async function prepare(project: Project, options: Pick<RenderOptions, "voice" | "python" | "serverUrl" | "log">) {

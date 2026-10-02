@@ -54,7 +54,10 @@ export type Sequence = SceneSpec | CardSpec;
 
 export interface FilmOptions {
   title: string;
-  format?: "landscape" | "portrait" | "square";
+  /** Khổ hình: landscape 16:9, scope 2,39:1 (màn ảnh rộng chiếu rạp), flat 1,85:1, portrait 9:16, square 1:1. */
+  format?: "landscape" | "scope" | "flat" | "portrait" | "square";
+  /** Độ phân giải bản cuối: 1080p (mặc định) hoặc 4k (gấp đôi mỗi chiều). */
+  resolution?: "1080p" | "4k";
   /** Giọng VieNeu-TTS cho lời dẫn. */
   narrator?: string;
   subtitles?: boolean;

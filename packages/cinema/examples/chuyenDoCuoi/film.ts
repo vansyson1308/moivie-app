@@ -5,6 +5,7 @@ const film = createFilm({
   narrator: "Thiện Minh",
   music: "calm",
   author: "Toonflow Cinema",
+  format: "scope",
   look: { grain: 0.06, vignette: 0.4 },
 });
 
