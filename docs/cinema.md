@@ -1,6 +1,6 @@
 # Toonflow Cinema — điện ảnh biên dịch
 
-[Mục lục tài liệu](./readme.md) · [Hướng dẫn cho agent](../packages/skills/cinema/SKILL.md) · [Phim mẫu](../packages/cinema/examples/chuyenDoCuoi/film.ts)
+[Mục lục tài liệu](./readme.md) · [Hướng dẫn cho agent](../packages/skills/cinema/SKILL.md) · Phim mẫu: [Chuyến đò cuối](../packages/cinema/examples/chuyenDoCuoi/film.ts), [Đèn Trung Thu](../packages/cinema/examples/denTrungThu/film.ts)
 
 ## Ý tưởng
 
@@ -63,6 +63,11 @@ Lồng tiếng giữ cách làm của srt-whiteboard-animation:
 | `cinema render --draft` (640×268) | khoảng 37 giây |
 | `cinema render` (1920×804, motion blur) | khoảng 2 phút 50 giây; số khung 1993/1993, −17 LUFS |
 | Sửa một câu thoại rồi dựng lại bản nháp | khoảng 17 giây, chỉ dựng lại góc máy chứa câu đó và đoạn chuyển cảnh liền sau |
+
+Phim mẫu thứ hai *Đèn Trung Thu* là cảnh đêm có đèn ông sao phát sáng, quay lưng rồi quay mặt, chạy tới ôm:
+- 59 giây, khổ 2,39:1, 2 cảnh, 12 góc máy, 8 câu thoại VieNeu;
+- dựng bản cuối mất 1 phút 44 giây;
+- số khung 1408/1408, −18,4 LUFS.
 
 Đầu ra gồm:
 
