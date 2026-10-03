@@ -8,7 +8,10 @@ import { createRenderer, type Renderer, type Stage } from "./frame";
 import { drawElement, elementDepth, lightingFor, palettes, type SetSpec } from "./set";
 import { transitionLength, type CompiledShot, type Timeline } from "./timeline";
 
-/** Một khung cần bộ dựng 3D vẽ: thời điểm và góc máy (góc máy trước khi đang hòa hình sang góc máy mới). */
+/**
+ * Một khung cần bộ dựng 3D vẽ: thời điểm và góc máy (góc máy trước khi đang hòa hình sang góc máy mới).
+ * file rỗng: khung ngữ cảnh ở mép một phần, chỉ đặt khoá hình để nhoè chuyển động liền mạch, không xuất ảnh.
+ */
 export interface FrameRequest { time: number; shot: CompiledShot; file: string }
 /** Phông vẽ (matte card): phần tử bối cảnh chưa có mô hình 3D, vẽ bằng bộ máy 2D rồi dựng thành tấm phẳng đúng độ sâu. */
 export interface Card { index: number; file: string; box: [number, number, number, number]; depth: number; id?: string }
@@ -108,8 +111,11 @@ export async function takeFor(spec: FilmSpec, timeline: Timeline, renderer: Rend
   };
 }
 
-/** Các khung một đoạn cần từ Blender: khung của góc máy (tệp `n.jpg`) và, trong đoạn hòa hình, khung của góc máy trước (`np.jpg`). */
-export function plateRequests(timeline: Timeline, shotIndex: number, start: number, frames: number, fps: number): FrameRequest[] {
+/**
+ * Các khung một đoạn cần từ Blender trong khoảng [from, to): khung của góc máy (tệp `n.jpg`) và, trong đoạn hòa hình,
+ * khung của góc máy trước (`np.jpg`); thêm một khung ngữ cảnh mỗi bên (không xuất ảnh) cho nhoè chuyển động.
+ */
+export function plateRequests(timeline: Timeline, shotIndex: number, start: number, frames: number, fps: number, from = 0, to = frames): FrameRequest[] {
   const shot = timeline.shots[shotIndex]!;
   const previous = timeline.shots[shotIndex - 1];
   const kind = shot.spec?.transition;
@@ -117,29 +123,34 @@ export function plateRequests(timeline: Timeline, shotIndex: number, start: numb
   const blends = previous && !previous.card && length && (kind === "dissolve" || kind === "wipe" || kind === "iris");
   const requests: FrameRequest[] = [];
   if (shot.card) return requests;
-  for (let frame = 0; frame < frames; frame++) {
+  for (let frame = Math.max(0, from - 1); frame < Math.min(frames, to + 1); frame++) {
     const time = start + frame / fps + 0.0001;
-    requests.push({ time, shot, file: `${frame}.jpg` });
-    if (blends && time - shot.start < length) requests.push({ time, shot: previous, file: `${frame}p.jpg` });
+    const kept = frame >= from && frame < to;
+    requests.push({ time, shot, file: kept ? `${frame}.jpg` : "" });
+    if (blends && time - shot.start < length) requests.push({ time, shot: previous, file: kept ? `${frame}p.jpg` : "" });
   }
   return requests;
 }
 
+/** Số khung mỗi phần việc của máy dựng: đủ dài để công dựng cảnh chia đều, đủ ngắn để nhiều máy cùng làm một góc máy dài. */
+export const plateChunk = 36;
+
 /**
- * Dựng khung 3D của một đoạn bằng Blender (Cycles, chạy trên CPU) vào thư mục riêng; có tệp done.json là xong.
- * python: Python 3.11 có module bpy (`bun run cinema setup --3d`).
+ * Dựng khung [from, from + plateChunk) của một đoạn bằng Blender (Cycles, chạy trên CPU) vào thư mục của đoạn;
+ * có tệp done-<from>.json là phần đó xong. python: Python 3.11 có module bpy (`bun run cinema setup --3d`).
  */
-export async function renderPlates(spec: FilmSpec, timeline: Timeline, segment: { shot: number; start: number; frames: number }, directory: string, options: { size: [number, number]; fps: number; draft?: boolean; python: string; cardDirectory: string; matteDirectory?: string; log: (message: string) => void }) {
-  const done = join(directory, "done.json");
+export async function renderPlates(spec: FilmSpec, timeline: Timeline, segment: { shot: number; start: number; frames: number }, from: number, directory: string, options: { size: [number, number]; fps: number; draft?: boolean; python: string; cardDirectory: string; matteDirectory?: string; log: (message: string) => void }) {
+  const done = join(directory, `done-${from}.json`);
   if (await exists(done)) return;
-  const requests = plateRequests(timeline, segment.shot, segment.start, segment.frames, options.fps);
+  const requests = plateRequests(timeline, segment.shot, segment.start, segment.frames, options.fps, from, Math.min(segment.frames, from + plateChunk));
+  const wanted = requests.filter(request => request.file).length;
   await mkdir(directory, { recursive: true });
   if (requests.length) {
     // ACT: bộ dựng 2D chỉ để hỏi trạng thái sân khấu, khung vẽ nhỏ; tỉ lệ khung giữ đúng vì máy quay bố cục theo tỉ lệ.
     const [width, height] = options.size;
     const renderer = createRenderer(spec, timeline, Math.round(width / 4), Math.round(height / 4));
     const take = await takeFor(spec, timeline, renderer, requests, options.size, options.draft ? "draft" : "final", options.cardDirectory, options.matteDirectory);
-    const takeFile = join(directory, "take.json");
+    const takeFile = join(directory, `take-${from}.json`);
     await writeFile(takeFile, JSON.stringify(take));
     const process = Bun.spawn([options.python, join(studio, "main.py"), takeFile, directory], { stdout: "pipe", stderr: "pipe" });
     const errors = new Response(process.stderr).text();
@@ -149,11 +160,11 @@ export async function renderPlates(spec: FilmSpec, timeline: Timeline, segment: 
       for (const line of decoder.decode(chunk).split("\n")) {
         if (!line.startsWith("{\"rendered\"")) continue;
         rendered++;
-        if (rendered % 24 === 0 || rendered === requests.length) options.log(`    🧊 ${rendered}/${requests.length} khung 3D`);
+        if (rendered % 12 === 0 || rendered === wanted) options.log(`    🧊 ${rendered}/${wanted} khung 3D`);
       }
     }
     const code = await process.exited;
     if (code) throw new Error(`Xưởng 3D lỗi (mã ${code}): ${(await errors).slice(-1500)}`);
   }
-  await writeFile(done, JSON.stringify({ frames: requests.length, studioVersion }));
+  await writeFile(done, JSON.stringify({ frames: wanted, studioVersion }));
 }

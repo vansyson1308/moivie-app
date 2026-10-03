@@ -6,7 +6,7 @@ import { ambience, foley, mix, music, reverb, writeWav, type Clip, type FoleyKin
 import type { FilmSpec } from "./film";
 import { createRenderer } from "./frame";
 import { ffmpeg } from "./encode";
-import { renderPlates, studioVersion } from "./stage3d";
+import { plateChunk, renderPlates, studioVersion } from "./stage3d";
 import { hashSeed, strideOf, walkProgress } from "./motion";
 import type { Ambience } from "./set";
 import { collectLines, compile, elementOffset, stateAt, transitionLength, validate, type CompiledShot, type Timeline } from "./timeline";
@@ -120,14 +120,19 @@ async function renderShots(project: Project, timeline: Timeline, options: Render
   }
   if (engine === "3d") {
     // Khung 3D dựng trước (mỗi tiến trình Blender đã dùng hết nhân CPU), sau đó các luồng chỉ còn ghép lớp và mã hoá.
+    // Mỗi đoạn chia thành phần plateChunk khung; máy dựng thứ i nhận các phần có số thứ tự chia n dư i, nên góc máy dài
+    // cũng được nhiều máy cùng làm.
     const plates = join(project.directory, "build", "plates");
     const [part, parts] = options.shard ?? [0, 1];
-    for (const [index, segment] of pending.entries()) {
+    const units = pending.flatMap(segment => {
       segment.plates = join(plates, basename(segment.file, ".mp4"));
+      return Array.from({ length: Math.ceil(segment.frames / plateChunk) }, (_, index) => ({ segment, from: index * plateChunk }));
+    });
+    for (const [index, { segment, from }] of units.entries()) {
       if (index % parts !== part) continue;
       const shot = timeline.shots[segment.shot]!;
-      options.log(`  🧊 ${shot.label} · ${segment.frames} khung${options.shard ? ` · phần ${part + 1}/${parts}` : ""}`);
-      await renderPlates(project.spec, timeline, segment, segment.plates, {
+      options.log(`  🧊 ${shot.label} · khung ${from}–${Math.min(segment.frames, from + plateChunk) - 1}${options.shard ? ` · máy ${part + 1}/${parts}` : ""}`);
+      await renderPlates(project.spec, timeline, segment, from, segment.plates!, {
         size, fps, draft: options.draft, python: options.studioPython ?? "python3", cardDirectory: join(plates, "cards"), matteDirectory, log: options.log,
       });
     }

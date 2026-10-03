@@ -147,6 +147,8 @@ def main():
                 obj.keyframe_insert("location", frame=number)
         freeze(scene)
         for number, (_, frame) in enumerate(frames, start=1):
+            if not frame["file"]:
+                continue  # khung ngữ cảnh: chỉ có khoá hình cho nhoè chuyển động
             started = time.time()
             scene.frame_set(number)
             scene.render.filepath = os.path.join(output, frame["file"])
