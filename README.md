@@ -207,12 +207,15 @@ Bản Việt hóa này bổ sung **Toonflow Cinema**: agent (Claude Code, Codex 
 
 <div align="center">
 
-<a href="./docs/images/cinema/denTrungThu1.jpg"><img src="./docs/images/cinema/denTrungThu1.jpg" alt="Phim Đèn Trung Thu: bà nội và bé Na trước hiên nhà đêm trăng" width="49%" /></a>
-<a href="./docs/images/cinema/denTrungThu2.jpg"><img src="./docs/images/cinema/denTrungThu2.jpg" alt="Phim Đèn Trung Thu: bà nội trao đèn ông sao cho bé Na" width="49%" /></a>
-<a href="./docs/images/cinema/denTrungThu3.jpg"><img src="./docs/images/cinema/denTrungThu3.jpg" alt="Phim Đèn Trung Thu: người bố trở về trong đêm" width="49%" /></a>
-<a href="./docs/images/cinema/denTrungThu4.jpg"><img src="./docs/images/cinema/denTrungThu4.jpg" alt="Phim Đèn Trung Thu: bé Na ôm bố" width="49%" /></a>
+<a href="./docs/images/cinema/denTrungThu3d1.jpg"><img src="./docs/images/cinema/denTrungThu3d1.jpg" alt="Phim Đèn Trung Thu bản 3D: bé Na ngồi trước hiên nhà đêm trăng" width="49%" /></a>
+<a href="./docs/images/cinema/denTrungThu3d2.jpg"><img src="./docs/images/cinema/denTrungThu3d2.jpg" alt="Phim Đèn Trung Thu bản 3D: bà nội đi về phía bé Na dưới đèn lồng" width="49%" /></a>
+<a href="./docs/images/cinema/denTrungThu3d3.jpg"><img src="./docs/images/cinema/denTrungThu3d3.jpg" alt="Phim Đèn Trung Thu bản 3D: người bố trở về, bé Na cầm đèn ông sao" width="49%" /></a>
+<a href="./docs/images/cinema/denTrungThu3d4.jpg"><img src="./docs/images/cinema/denTrungThu3d4.jpg" alt="Phim Đèn Trung Thu bản 3D: cả nhà dưới trăng" width="49%" /></a>
 
-<sub>Khung hình trích từ phim ngắn <a href="./packages/cinema/examples/denTrungThu/film.ts"><em>Đèn Trung Thu</em></a> — khổ rạp 2,39:1, dựng hoàn toàn trên máy 4 nhân CPU.</sub>
+<sub>Khung hình trích từ phim ngắn <a href="./packages/cinema/examples/denTrungThu/film.ts"><em>Đèn Trung Thu</em></a> bản 3D:</sub><br />
+<sub>• khổ rạp 2,39:1, 1080p;</sub><br />
+<sub>• diễn viên cách điệu, ánh sáng path tracing (Blender/Cycles);</sub><br />
+<sub>• dựng trên render farm miễn phí gồm 20 máy GitHub Actions, từ cùng một tệp <code>film.ts</code> với bản 2D.</sub>
 
 </div>
 
@@ -224,6 +227,7 @@ Bản Việt hóa này bổ sung **Toonflow Cinema**: agent (Claude Code, Codex 
 | ✂️ **Dựng phim** | Hòa hình, gạt, iris, qua đen; L-cut khi đổi người nói; máy tự chia góc máy cho hội thoại. |
 | 🔊 **Âm thanh** | Bước chân, mái chèo, áo quần khớp đúng hình; thoại pan theo vị trí nhân vật; vang phòng; tiếng nền nối cầu giữa các cảnh. |
 | 🌅 **Ánh sáng** | 7 bảng màu theo giờ trong ngày, tia nắng, bloom, phản chiếu mặt nước, chỉnh màu kiểu phòng màu. |
+| 🧊 **Xưởng 3D** | Cùng `film.ts` dựng thành phim hoạt hình 3D cách điệu bằng Blender/Cycles: hình khối tròn mềm, ánh sáng vật lý, sương xa, DOF, nhoè chuyển động. Một khung 1080p mất khoảng 80 giây CPU, nên bản 3D chạy trên render farm GitHub Actions (miễn phí với repo công khai). |
 | 🎞️ **Định dạng** | 16:9, khổ rạp 2,39:1 và 1,85:1, dọc, vuông; 1080p hoặc 4K; chuẩn âm lượng −16 LUFS. |
 | ♻️ **Làm tiếp dự án** | Bộ nhớ đệm theo từng góc máy: sửa một câu thoại chỉ dựng lại đúng góc máy chứa câu đó. |
 
@@ -237,6 +241,7 @@ Dùng với agent lập trình:
 bun install
 bun run cinema setup                                              # một lần: cài VieNeu-TTS (~1 GB, chạy CPU)
 bun run cinema render packages/cinema/examples/denTrungThu/film.ts  # dựng phim mẫu
+bun run cinema setup --3d && bun run cinema render packages/cinema/examples/denTrungThu/film.ts --engine 3d --draft --shots 2-3  # thử bản 3D
 ```
 
 Kiến trúc, số liệu và cách dùng: [docs/cinema.md](./docs/cinema.md) · Hướng dẫn cho agent: [packages/skills/cinema/SKILL.md](./packages/skills/cinema/SKILL.md).

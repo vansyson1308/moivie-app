@@ -1,11 +1,12 @@
 import { createCanvas } from "@napi-rs/canvas";
 import { access, mkdir, readdir, readFile, writeFile } from "@toonflow/file";
 import { createHash } from "node:crypto";
-import { dirname, join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { ambience, foley, mix, music, reverb, writeWav, type Clip, type FoleyKind, type Mood, type Surface } from "./audio";
 import type { FilmSpec } from "./film";
 import { createRenderer } from "./frame";
 import { ffmpeg } from "./encode";
+import { plateChunk, renderPlates, studioVersion } from "./stage3d";
 import { hashSeed, strideOf, walkProgress } from "./motion";
 import type { Ambience } from "./set";
 import { collectLines, compile, elementOffset, stateAt, transitionLength, validate, type CompiledShot, type Timeline } from "./timeline";
@@ -15,7 +16,14 @@ import { synthesize, type VoiceEngine, type VoiceResult } from "./voice";
 const sources = (await readdir(import.meta.dirname, { recursive: true })).filter(name => name.endsWith(".ts")).sort();
 export const engineVersion = createHash("sha256").update((await Promise.all(sources.map(name => readFile(join(import.meta.dirname, name), "utf8")))).join("\n")).digest("hex").slice(0, 12);
 export interface Project { file: string; directory: string; name: string; spec: FilmSpec }
-export interface RenderOptions { draft?: boolean; voice: VoiceEngine; python?: string; serverUrl?: string; shots?: number[]; log: (message: string) => void }
+/**
+ * engine "3d": cảnh dựng bằng Blender/Cycles (studioPython là Python 3.11 có bpy), bản 2D vẫn là bản nháp/animatic.
+ * shard [i, n]: chỉ dựng khung 3D của phần thứ i trong n phần rồi dừng (máy dựng song song), lần chạy không shard ghép phim.
+ */
+export interface RenderOptions {
+  draft?: boolean; voice: VoiceEngine; python?: string; serverUrl?: string; shots?: number[]; log: (message: string) => void;
+  engine?: "2d" | "3d"; studioPython?: string; shard?: [number, number];
+}
 
 // Khổ rạp: scope 2,39:1 và flat 1,85:1 trên bề ngang 1920 (DCI dùng 2048, tỉ lệ giữ nguyên); chiều cao làm chẵn cho yuv420p.
 const sizes = { landscape: [1920, 1080], scope: [1920, 804], flat: [1920, 1038], portrait: [1080, 1920], square: [1080, 1080] } as const;
@@ -63,13 +71,14 @@ function slice(spec: FilmSpec, timeline: Timeline, shot: CompiledShot, from: num
   };
 }
 
-export interface Segment { shot: number; start: number; frames: number; file: string }
+/** plates: thư mục khung 3D của đoạn (bản dựng --engine 3d). */
+export interface Segment { shot: number; start: number; frames: number; file: string; plates?: string }
 
 /**
  * Mỗi góc máy là một hoặc hai đoạn: phần đầu chồng hình với góc máy trước (hòa hình, gạt, iris) và phần thân chỉ phụ thuộc
  * chính nó. Sửa góc máy trước chỉ dựng lại phần chuyển cảnh, không dựng lại cả góc máy sau.
  */
-function segmentsOf(spec: FilmSpec, timeline: Timeline, shot: CompiledShot, size: [number, number], fps: number, directory: string): Segment[] {
+function segmentsOf(spec: FilmSpec, timeline: Timeline, shot: CompiledShot, size: [number, number], fps: number, directory: string, engine: string): Segment[] {
   const replacer = (key: string, value: unknown) => value instanceof Float32Array
     ? [value.length, Math.round(value.reduce((sum, item, index) => sum + item * (index % 97), 0) * 1000)]
     : key === "index" || key === "label" ? undefined
@@ -81,6 +90,7 @@ function segmentsOf(spec: FilmSpec, timeline: Timeline, shot: CompiledShot, size
   const overlap = previous && (kind === "dissolve" || kind === "wipe" || kind === "iris") ? Math.min(total, Math.round(transitionLength(shot) * fps)) : 0;
   const base = {
     engineVersion, size, fps, look: spec.options.look, subtitles: spec.options.subtitles,
+    ...engine !== "2d" ? { engine, studioVersion } : {},
     shot: slice(spec, timeline, shot, shot.start, shot.start + shot.duration),
     previous: previous?.card ? "card" : "",
     next: next ? next.card ? "card" : `${next.spec?.transition ?? ""}:${transitionLength(next)}` : "end",
@@ -96,12 +106,37 @@ function segmentsOf(spec: FilmSpec, timeline: Timeline, shot: CompiledShot, size
 
 /** Dựng các đoạn song song trên nhiều nhân CPU; đoạn không đổi thì dùng lại bản đã dựng. */
 async function renderShots(project: Project, timeline: Timeline, options: RenderOptions, fps: number, size: [number, number], indexes: number[]) {
-  const directory = join(project.directory, "build", options.draft ? "shotsDraft" : "shots");
+  const engine = options.engine ?? "2d";
+  // Bản 3D: khoá đệm gồm cả phông trời vẽ sẵn (đổi tranh thì dựng lại).
+  const matteDirectory = join(project.directory, "matte");
+  const mattes = await readdir(matteDirectory).catch(() => [] as string[]);
+  const matte = createHash("sha256").update((await Promise.all(mattes.sort().map(name => readFile(join(matteDirectory, name))))).map(data => createHash("sha256").update(data).digest("hex")).join()).digest("hex").slice(0, 12);
+  const directory = join(project.directory, "build", `${options.draft ? "shotsDraft" : "shots"}${engine === "3d" ? "3d" : ""}`);
   await mkdir(directory, { recursive: true });
-  const segments = indexes.flatMap(index => segmentsOf(project.spec, timeline, timeline.shots[index]!, size, fps, directory));
+  const segments = indexes.flatMap(index => segmentsOf(project.spec, timeline, timeline.shots[index]!, size, fps, directory, engine === "3d" ? `3d:${matte}` : engine));
   const pending: Segment[] = [];
   for (const segment of segments) {
     if (!await access(segment.file).then(() => true, () => false) && !pending.some(item => item.file === segment.file)) pending.push(segment);
+  }
+  if (engine === "3d") {
+    // Khung 3D dựng trước (mỗi tiến trình Blender đã dùng hết nhân CPU), sau đó các luồng chỉ còn ghép lớp và mã hoá.
+    // Mỗi đoạn chia thành phần plateChunk khung; máy dựng thứ i nhận các phần có số thứ tự chia n dư i, nên góc máy dài
+    // cũng được nhiều máy cùng làm.
+    const plates = join(project.directory, "build", "plates");
+    const [part, parts] = options.shard ?? [0, 1];
+    const units = pending.flatMap(segment => {
+      segment.plates = join(plates, basename(segment.file, ".mp4"));
+      return Array.from({ length: Math.ceil(segment.frames / plateChunk) }, (_, index) => ({ segment, from: index * plateChunk }));
+    });
+    for (const [index, { segment, from }] of units.entries()) {
+      if (index % parts !== part) continue;
+      const shot = timeline.shots[segment.shot]!;
+      options.log(`  🧊 ${shot.label} · khung ${from}–${Math.min(segment.frames, from + plateChunk) - 1}${options.shard ? ` · máy ${part + 1}/${parts}` : ""}`);
+      await renderPlates(project.spec, timeline, segment, from, segment.plates!, {
+        size, fps, draft: options.draft, python: options.studioPython ?? "python3", cardDirectory: join(plates, "cards"), matteDirectory, log: options.log,
+      });
+    }
+    if (options.shard) return [];
   }
   if (!pending.length) return segments.map(segment => segment.file);
   // Đoạn dài làm trước để các luồng xong gần cùng lúc.
@@ -312,6 +347,14 @@ export async function renderFilm(project: Project, options: RenderOptions) {
   };
   await writeFile(join(out, `${name}-report.json`), JSON.stringify(report, null, 2));
   return { video, subtitles: partial ? undefined : subtitles, report, timeline };
+}
+
+/** Máy dựng song song: chỉ dựng khung 3D của phần options.shard trong thư mục build/plates (không ghép phim). */
+export async function renderShard(project: Project, options: RenderOptions & { shard: [number, number] }) {
+  const { timeline } = await prepare(project, options);
+  const indexes = options.shots?.length ? options.shots.filter(index => timeline.shots[index]) : timeline.shots.map(shot => shot.index);
+  await renderShots(project, timeline, { ...options, engine: "3d" }, 24, frameSize(project.spec, options.draft), indexes);
+  return timeline;
 }
 
 /** Trang duyệt storyboard: mỗi góc máy 3 khung (đầu, giữa, cuối) để agent và người dùng soát bố cục, diễn xuất, máy quay. */

@@ -4,7 +4,8 @@ import { access, mkdir, readFile } from "@toonflow/file";
 import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Film } from "./src/film";
-import { prepare, renderFilm, renderSheets, renderStill, type Project } from "./src/render";
+import { prepare, renderFilm, renderShard, renderSheets, renderStill, type Project } from "./src/render";
+import { paintMattes } from "./src/matte";
 import { vieneuVoices } from "./src/vieneuVoices";
 import type { VoiceEngine } from "./src/voice";
 
@@ -13,13 +14,18 @@ const usage = `Toonflow Cinema — dựng phim hoạt hình hoàn toàn trên m�
   bun run cinema check  <film.ts>                 kiểm tra kịch bản, in danh sách góc máy và thời lượng
   bun run cinema sheet  <film.ts> [--shots 0-5]    trang duyệt storyboard (3 khung mỗi góc máy) → out/sheet-*.png
   bun run cinema still  <film.ts> --at 12.5        xuất một khung hình đầy đủ độ phân giải
-  bun run cinema render <film.ts> [--draft] [--shots 3,5-7]
+  bun run cinema render <film.ts> [--draft] [--shots 3,5-7] [--engine 3d] [--shard 2/20]
                                                   dựng phim (hoặc chỉ các góc máy chọn) → out/*.mp4 + .srt
   bun run cinema setup                            cài VieNeu-TTS vào packages/cinema/.venv (một lần, ~1 GB)
+  bun run cinema setup --3d                       cài Blender (module bpy, Python 3.11) vào packages/cinema/.venv3d (~400 MB)
   bun run cinema voices                           liệt kê giọng VieNeu
+  bun run cinema matte  <film.ts>                 vẽ phông trời cho bản 3D bằng Cloudflare Workers AI → matte/<bối cảnh>.jpg
+                                                  (cần CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN; chỉ chạy một lần, commit ảnh cùng phim)
 
   --voice vieneu|silent   giọng đọc (mặc định vieneu nếu đã cài, không thì silent để dựng nháp)
-  --python <đường dẫn>    Python có cài vieneu (hoặc đặt CINEMA_PYTHON); VIENEU_URL để dùng máy chủ VieNeu`;
+  --python <đường dẫn>    Python có cài vieneu (hoặc đặt CINEMA_PYTHON); VIENEU_URL để dùng máy chủ VieNeu
+  --engine 3d             dựng cảnh bằng Blender/Cycles (ánh sáng vật lý); CINEMA_STUDIO_PYTHON trỏ Python có bpy
+  --shard i/n             chỉ dựng khung 3D của phần i trong n (render farm); chạy lại không --shard để ghép phim`;
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -29,6 +35,8 @@ const log = (message: string) => console.log(message);
 // CINEMA_VENV: nơi cài VieNeu khi thư mục bộ dựng chỉ đọc (ứng dụng desktop đặt vào thư mục dữ liệu).
 const venv = process.env.CINEMA_VENV ? resolve(process.env.CINEMA_VENV) : resolve(import.meta.dirname, ".venv");
 const venvPython = join(venv, process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
+const studioVenv = process.env.CINEMA_VENV ? `${resolve(process.env.CINEMA_VENV)}3d` : resolve(import.meta.dirname, ".venv3d");
+const studioPython = process.env.CINEMA_STUDIO_PYTHON ?? join(studioVenv, process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
 const exists = (path: string) => access(path).then(() => true, () => false);
 
 function parseShots(value?: string) {
@@ -77,6 +85,20 @@ async function main() {
     for (const [name, note] of vieneuVoices) log(`${name.padEnd(16)} ${note}`);
     return;
   }
+  if (command === "setup" && has("3d")) {
+    // Blender dạng module Python: bản 4.2 LTS chỉ có cho đúng Python 3.11.
+    if (!await exists(studioPython)) {
+      log(`Tạo môi trường Python 3.11 tại ${studioVenv}…`);
+      const created = Bun.spawnSync([process.platform === "win32" ? "py" : "python3.11", ...process.platform === "win32" ? ["-3.11"] : [], "-m", "venv", studioVenv], { stdout: "inherit", stderr: "inherit" });
+      if (created.exitCode) throw new Error("Không tạo được môi trường Python 3.11 (bpy 4.2 cần đúng Python 3.11).");
+    }
+    const installed = Bun.spawnSync([studioPython, "-m", "pip", "install", "bpy==4.2.0"], { stdout: "inherit", stderr: "inherit" });
+    if (installed.exitCode) throw new Error("Cài bpy thất bại.");
+    const probe = Bun.spawnSync([studioPython, "-c", "import bpy; print(bpy.app.version_string)"], { stdout: "pipe", stderr: "inherit" });
+    if (probe.exitCode) throw new Error("Đã cài bpy nhưng không nạp được (trên Linux cần thư viện hệ thống như libxrender1, libxi6, libxkbcommon0, libsm6, libgl1).");
+    log(`✅ Xưởng 3D sẵn sàng: Blender ${probe.stdout.toString().trim()}`);
+    return;
+  }
   if (command === "setup") {
     if (!await exists(venvPython)) {
       log(`Tạo môi trường Python tại ${venv}…`);
@@ -99,6 +121,11 @@ async function main() {
   const project = await loadProject(args[1]);
   const options = await voiceOptions();
   const shots = parseShots(flag("shots"));
+  if (command === "matte") {
+    const painted = await paintMattes(project.spec, project.directory, log);
+    log(painted.length ? `✅ ${painted.join("\n   ")}` : "Mọi bối cảnh ngoài trời đã có phông trời.");
+    return;
+  }
   if (command === "check") {
     const { timeline } = await prepare(project, options);
     const known = new Set<string>(vieneuVoices.map(([name]) => name));
@@ -122,8 +149,18 @@ async function main() {
     return;
   }
   if (command === "render") {
+    const engine = flag("engine") === "3d" ? "3d" : "2d";
+    if (engine === "3d" && !await exists(studioPython)) throw new Error("Chưa cài xưởng 3D: chạy `bun run cinema setup --3d` hoặc đặt CINEMA_STUDIO_PYTHON.");
+    const shard = flag("shard")?.split("/").map(Number);
+    if (shard) {
+      const [part, parts] = shard as [number, number];
+      if (!(parts >= 1 && part >= 1 && part <= parts)) throw new Error("--shard cần dạng i/n với 1 ≤ i ≤ n, ví dụ --shard 3/20");
+      await renderShard(project, { ...options, draft: has("draft"), shots, studioPython, shard: [part - 1, parts] });
+      log(`✅ Xong phần ${part}/${parts}: khung 3D trong ${join(project.directory, "build", "plates")}`);
+      return;
+    }
     await mkdir(join(project.directory, "out"), { recursive: true });
-    const result = await renderFilm(project, { ...options, draft: has("draft"), shots });
+    const result = await renderFilm(project, { ...options, draft: has("draft"), shots, engine, studioPython });
     log(`✅ ${result.video}`);
     if (result.subtitles) log(`   ${result.subtitles}`);
     log(`   ${result.report.duration}s · ${result.report.shots} góc máy · dựng trong ${result.report.renderSeconds}s`);

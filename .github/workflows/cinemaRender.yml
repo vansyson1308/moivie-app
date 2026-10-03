@@ -1,0 +1,182 @@
+name: Cinema render farm
+
+# Xưởng dựng phim 3D mượn máy của GitHub Actions: repo công khai được chạy song song tới 20 máy 4 nhân, không tính phút.
+# Ba bước như render farm của xưởng phim: lên kế hoạch (thu giọng), chia khung 3D cho nhiều máy, ghép phim.
+on:
+  workflow_dispatch:
+    inputs:
+      film:
+        description: Đường dẫn film.ts trong repo
+        type: string
+        default: packages/cinema/examples/denTrungThu/film.ts
+      shards:
+        description: Số máy dựng khung 3D song song
+        type: number
+        default: 20
+      draft:
+        description: Bản nháp (1/3 độ phân giải, ít mẫu sáng)
+        type: boolean
+        default: false
+      shots:
+        description: Chỉ dựng các góc máy này (ví dụ 2,5-7), để trống là cả phim
+        type: string
+        default: ""
+  pull_request:
+    paths:
+      - packages/cinema/studio/**
+      - packages/cinema/src/stage3d.ts
+      - .github/workflows/cinemaRender.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cinemaRender-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  film: ${{ inputs.film || 'packages/cinema/examples/denTrungThu/film.ts' }}
+  shards: ${{ inputs.shards || 20 }}
+  # PR đổi xưởng 3D dựng lại bản cuối phim mẫu làm bằng chứng; chạy tay thì chọn nháp hay bản cuối.
+  quality: ${{ inputs.draft && '--draft' || '' }}
+  shots: ${{ inputs.shots && format('--shots {0}', inputs.shots) || '' }}
+
+jobs:
+  plan:
+    name: Thu giọng và chia việc
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.split.outputs.matrix }}
+      directory: ${{ steps.split.outputs.directory }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Cài VieNeu-TTS và thu toàn bộ lời thoại
+        run: |
+          bun packages/cinema/cli.ts setup
+          bun packages/cinema/cli.ts check "$film" --voice vieneu
+      - id: split
+        run: |
+          directory=$(dirname "$film")
+          echo "directory=$directory" >> "$GITHUB_OUTPUT"
+          echo "matrix=$(seq -s, 1 "$shards" | sed 's/^/[/;s/$/]/')" >> "$GITHUB_OUTPUT"
+      # Secret không dùng được trong điều kiện if: hỏi trước một bước (chỉ ra true/false, không lộ giá trị).
+      - id: cloudflare
+        run: echo "enabled=${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.CLOUDFLARE_API_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+      - name: Vẽ phông trời bằng Cloudflare Workers AI (khi repo có secret Cloudflare)
+        if: steps.cloudflare.outputs.enabled == 'true'
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: bun packages/cinema/cli.ts matte "$film" --voice vieneu
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voice
+          path: ${{ steps.split.outputs.directory }}/build/voice
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: matte
+          path: ${{ steps.split.outputs.directory }}/matte
+          retention-days: 3
+          if-no-files-found: ignore
+
+  render:
+    name: Dựng khung 3D ${{ matrix.shard }}/${{ inputs.shards || 20 }}
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Cài Blender (bpy)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq libxrender1 libxi6 libxkbcommon0 libsm6 libgl1 libxxf86vm1 libxfixes3
+          bun packages/cinema/cli.ts setup --3d
+      - uses: actions/download-artifact@v4
+        with:
+          name: voice
+          path: ${{ needs.plan.outputs.directory }}/build/voice
+      - name: Phông trời (nếu bước plan đã vẽ)
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: matte
+          path: ${{ needs.plan.outputs.directory }}/matte
+      - name: Dựng phần ${{ matrix.shard }}
+        # Giọng đã thu ở bước plan nằm trong bộ nhớ đệm: không cần cài lại VieNeu.
+        run: bun packages/cinema/cli.ts render "$film" --engine 3d --voice vieneu --python python3 --shard "${{ matrix.shard }}/$shards" $quality $shots
+      # Dịch vụ artifact của GitHub đôi khi quá hạn: không làm đỏ máy dựng, bước ghép sẽ tự dựng bù phần thiếu.
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: plates${{ matrix.shard }}
+          path: ${{ needs.plan.outputs.directory }}/build/plates
+          retention-days: 3
+          if-no-files-found: ignore
+
+  assemble:
+    name: Ghép phim
+    needs: [plan, render]
+    # Vẫn ghép khi vài máy dựng lỗi: khung còn thiếu được dựng bù ngay tại đây.
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Cài FFmpeg và Blender (dựng bù khung còn thiếu)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq ffmpeg libxrender1 libxi6 libxkbcommon0 libsm6 libgl1 libxxf86vm1 libxfixes3
+          bun packages/cinema/cli.ts setup --3d
+      - uses: actions/download-artifact@v4
+        with:
+          name: voice
+          path: ${{ needs.plan.outputs.directory }}/build/voice
+      - name: Phông trời (nếu bước plan đã vẽ)
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: matte
+          path: ${{ needs.plan.outputs.directory }}/matte
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: plates*
+          merge-multiple: true
+          path: ${{ needs.plan.outputs.directory }}/build/plates
+      - name: Ghép lớp, phụ đề, chuyển cảnh, âm thanh
+        run: bun packages/cinema/cli.ts render "$film" --engine 3d --voice vieneu --python python3 $quality $shots
+      - uses: actions/upload-artifact@v4
+        with:
+          name: film
+          path: ${{ needs.plan.outputs.directory }}/out
+          retention-days: 14

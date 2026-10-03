@@ -32,7 +32,7 @@ async function copyPackage(name: string, from: string) {
 
 await rm(target, { recursive: true, force: true });
 await mkdir(target, { recursive: true });
-for (const entry of ["cli.ts", "package.json", "src", "voice", "assets"]) await cp(join(source, entry), join(target, entry), { recursive: true });
+for (const entry of ["cli.ts", "package.json", "src", "voice", "studio", "assets"]) await cp(join(source, entry), join(target, entry), { recursive: true });
 const manifest = JSON.parse(await readFile(join(source, "package.json"), "utf8")) as { dependencies: Record<string, string> };
 for (const dependency of Object.keys(manifest.dependencies)) await copyPackage(dependency, source);
 console.log(`Đã chuẩn bị bộ dựng phim: ${target} (${copied.size} gói)`);
