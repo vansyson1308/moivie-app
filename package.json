@@ -30,6 +30,7 @@
     "dev:server": "bun run --filter '@toonflow/server' dev",
     "dev:desktop": "bun run --filter '@toonflow/desktop' dev",
     "dev:plugins": "NODE_ENV=dev bun run --filter './packages/tools/*' --filter './packages/nodes/*' build",
+    "cinema": "bun packages/cinema/cli.ts",
     "dev:updateServer": "bun run --filter '@toonflow/updateServer' dev",
     "start:updateServer": "bun run --filter '@toonflow/updateServer' start",
     "publish:update": "bun run apps/updateServer/scripts/publish.ts",
@@ -46,6 +47,7 @@
     "build:tools": "bun -e \"import { rmSync } from '@toonflow/file'; import { resolve } from 'node:path'; rmSync(resolve('build/tools'), { recursive: true, force: true });\" && NODE_ENV=production bun run --filter './packages/tools/*' build"
   },
   "devDependencies": {
+    "@toonflow/cinema": "workspace:*",
     "@toonflow/file": "workspace:*",
     "@types/bun": "^1.4.2",
     "@types/postcss-pxtorem": "^6.1.0",
