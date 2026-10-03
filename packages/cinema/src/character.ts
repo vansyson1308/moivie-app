@@ -239,14 +239,14 @@ export type PropDrawer = (ctx: SKRSContext2D, hand: Point, angle: number, scale:
 
 interface Part { depth: number; draw: () => void }
 
-const brows: Record<Expression, [number, number]> = {
+export const brows: Record<Expression, [number, number]> = {
   neutral: [0, 0], happy: [-0.06, -0.08], sad: [-0.16, 0.08], angry: [0.14, -0.08], surprised: [-0.2, -0.18], scared: [-0.18, 0.04], thinking: [-0.1, 0.02], tender: [-0.08, 0.02],
 };
-const smiles: Record<Expression, number> = {
+export const smiles: Record<Expression, number> = {
   neutral: 0.08, happy: 1, sad: -0.75, angry: -0.55, surprised: 0, scared: -0.35, thinking: -0.12, tender: 0.55,
 };
 /** Độ sụp mí trên và độ nhô mí dưới theo cảm xúc. */
-const lids: Record<Expression, [number, number]> = {
+export const lids: Record<Expression, [number, number]> = {
   neutral: [0.14, 0], happy: [0.14, 0.32], sad: [0.3, 0], angry: [0.3, 0.08], surprised: [0, 0], scared: [0, 0], thinking: [0.22, 0.05], tender: [0.2, 0.18],
 };
 
@@ -772,7 +772,7 @@ function drawHead(ctx: SKRSContext2D, character: Character, pose: Pose, center: 
   drawHat(ctx, character, pose, center, yaw, at, lighting, line);
 }
 
-const visemeShapes: Record<Viseme, { w: number; h: number; teeth: number; tongue: number; round: number }> = {
+export const visemeShapes: Record<Viseme, { w: number; h: number; teeth: number; tongue: number; round: number }> = {
   X: { w: 0.8, h: 0, teeth: 0, tongue: 0, round: 0 },
   A: { w: 0.72, h: 0, teeth: 0, tongue: 0, round: 0 },
   B: { w: 0.9, h: 0.3, teeth: 1, tongue: 0, round: 0 },

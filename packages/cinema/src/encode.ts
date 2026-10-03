@@ -1,4 +1,6 @@
-import { rename, rm } from "@toonflow/file";
+import { loadImage, type Image } from "@napi-rs/canvas";
+import { access, readFile, rename, rm } from "@toonflow/file";
+import { join } from "node:path";
 import type { Renderer } from "./frame";
 import type { Segment } from "./render";
 
@@ -26,6 +28,15 @@ export async function encodeShot(renderer: Renderer, segment: Segment, options: 
     "-pix_fmt", "yuv420p", "-an", temporary,
   ], async stdin => {
     for (let frame = 0; frame < segment.frames; frame++) {
+      if (segment.plates) {
+        // Khung 3D: n.jpg của góc máy này, np.jpg của góc máy trước khi đang hòa hình (xem plateRequests).
+        const plates = new Map<number, Image>();
+        for (const [shot, name] of [[segment.shot, `${frame}.jpg`], [segment.shot - 1, `${frame}p.jpg`]] as const) {
+          const path = join(segment.plates, name);
+          if (await access(path).then(() => true, () => false)) plates.set(shot, await loadImage(await readFile(path)));
+        }
+        renderer.usePlates(plates);
+      }
       renderer.draw(segment.start + frame / fps + 0.0001);
       // ACT: data() trả vùng nhớ RGBA trực tiếp (nhân sẵn alpha); khung hình luôn phủ kín nền nên dùng như RGBA thường. getImageData chậm và rò bộ nhớ.
       stdin.write(renderer.canvas.data());

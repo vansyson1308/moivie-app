@@ -35,7 +35,7 @@ Trả lời người dùng bằng ngôn ngữ của họ (mặc định tiếng 
   - Chuẩn bị một lần: `bun install`, rồi `bun run cinema setup` để cài VieNeu-TTS vào `packages/cinema/.venv` (khoảng 1 GB mô hình, chạy CPU).
   - Cần FFmpeg trong PATH (hoặc `FFMPEG_PATH`). Chưa cài VieNeu vẫn làm được: máy dùng **giọng câm** (thời lượng ước theo âm tiết, miệng vẫn nhép) để dựng nháp, cài xong thì dựng lại là có tiếng.
 
-## Quy trình 6 bước
+## Quy trình 6 bước (+ bản 3D tuỳ chọn)
 
 Mỗi phim là một thư mục riêng chứa `film.ts`:
 - trong app: một thư mục trong workspace;
@@ -158,6 +158,20 @@ bun run cinema render projects/<ten>/film.ts
 
 Ra `out/<ten>.mp4` (1080p hoặc 4K, 24 hình/giây, motion blur, chuẩn âm lượng −16 LUFS), `out/<ten>.srt` và `out/<ten>-report.json`. Đọc báo cáo: `frames` phải bằng `expectedFrames`. Dựng song song trên nhiều nhân CPU; phim 1 phút mất khoảng 2–3 phút trên máy 4 nhân. Gửi người dùng tệp MP4, SRT, thời lượng, danh sách cảnh và những chỗ bạn đã tự sửa sau khi duyệt.
 
+### 7. Bản 3D (tuỳ chọn, chất lượng phim hoạt hình 3D)
+
+Bản 2D ở trên là animatic. Khi người dùng muốn hình khối và ánh sáng thật kiểu phim hoạt hình 3D, dựng cùng `film.ts` bằng xưởng Blender/Cycles. Diễn xuất y hệt bản 2D, chỉ đổi khâu dựng hình.
+
+```bash
+bun run cinema setup --3d                                              # một lần: Blender (bpy, cần Python 3.11)
+bun run cinema render projects/<ten>/film.ts --engine 3d --draft --shots 2-3   # thử: khoảng 5 giây mỗi khung
+```
+
+- Bản cuối 3D tốn cả phút mỗi khung trên CPU. Phim dài thì đẩy lên GitHub và chạy workflow **Cinema render farm**: chia khung cho tối đa 20 máy, `--shard i/n`.
+- Có `CLOUDFLARE_ACCOUNT_ID` và `CLOUDFLARE_API_TOKEN` thì chạy `bun run cinema matte <film.ts>` một lần để có phông trời vẽ tay `matte/<bối cảnh>.jpg`. Commit ảnh cùng phim.
+- Vật thể có mô hình 3D: house, tree, lantern, hills, mountains, bamboo, grass. Loại khác thành phông vẽ đặt đúng độ sâu.
+- Duyệt storyboard vẫn bằng `sheet` 2D (nhanh). Chỉ dựng 3D các góc máy đã chốt.
+
 ## Tra cứu nhanh
 
 **Diễn viên** (`film.cast`): `name`, `age` (child/adult/elder), `gender`, `build` (slim/average/heavy), `skin`, `hair: { style, color }` (short, sidePart, long, bun, ponytail, bald, curly, bob), `beard` (none, mustache, goatee, full), `outfit: { style, top, bottom, accent }` (shirt, aoDai, aoBaBa, dress, jacket, robe), `hat` (none, nonLa, cap, khanDong, beret), `hatColor`, `glasses`, `scale`, `voice`.
@@ -187,3 +201,4 @@ Ra `out/<ten>.mp4` (1080p hoặc 4K, 24 hình/giây, motion blur, chuẩn âm l�
 | Nhân vật ra khỏi khung | kiểm tra `x` so với `width` của bối cảnh; dùng `twoShot`/`wide` thay vì cận |
 | Dựng chậm | dùng `--draft` và `--shots` khi duyệt (bản nháp tắt motion blur); đặt `CINEMA_WORKERS` để đổi số luồng |
 | App báo cần FFmpeg | cài hoặc chọn FFmpeg trong chợ plugin rồi chạy lại |
+| `Xưởng 3D lỗi` / không nạp được bpy | cần đúng Python 3.11; trên Linux cài `libxrender1 libxi6 libxkbcommon0 libsm6 libgl1`; hoặc đặt `CINEMA_STUDIO_PYTHON` |

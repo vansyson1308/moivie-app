@@ -31,9 +31,11 @@ Thumbs.db
 *.keychain
 *.keychain-db
 
-# Toonflow Cinema: dự án phim của người dùng, bộ nhớ đệm và môi trường giọng đọc
+# Toonflow Cinema: dự án phim của người dùng, bộ nhớ đệm, môi trường giọng đọc và xưởng 3D
 /projects/
 /packages/cinema/.venv/
+/packages/cinema/.venv3d/
+/packages/cinema/studio/__pycache__/
 /packages/cinema/scratch/
 /packages/cinema/examples/*/build/
 /packages/cinema/examples/*/out/

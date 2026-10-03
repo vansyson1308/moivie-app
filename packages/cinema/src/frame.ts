@@ -1,6 +1,6 @@
-import { createCanvas, GlobalFonts, Path2D, type Canvas, type SKRSContext2D } from "@napi-rs/canvas";
+import { createCanvas, GlobalFonts, Path2D, type Canvas, type Image, type SKRSContext2D } from "@napi-rs/canvas";
 import { resolve } from "node:path";
-import { anchors, drawCharacter, type Pose } from "./character";
+import { anchors, drawCharacter, rig, type Pose } from "./character";
 import { frameShot, moveEnd, viewAt, wideCenterY, wideHeight, type Subject, type View } from "./camera";
 import type { FilmSpec } from "./film";
 import { hashSeed, poseAt, random, screenSide } from "./motion";
@@ -18,6 +18,21 @@ export interface Renderer {
   shotAt(time: number): CompiledShot;
   /** Vị trí ngang của nhân vật trên màn hình lúc time (−1 mép trái … +1 mép phải), undefined khi không có trong cảnh. */
   locate(id: string, time: number): number | undefined;
+  /** Đặt khung 3D cho lần vẽ kế tiếp (theo số thứ tự góc máy); góc máy có khung 3D thì không vẽ cảnh 2D. */
+  usePlates(plates: Map<number, Image>): void;
+  /** Trạng thái sân khấu lúc time nhìn qua máy quay của shot (mặc định góc máy đang chiếu): dữ liệu cho bộ dựng 3D. */
+  stage(time: number, shot?: CompiledShot): Stage | undefined;
+}
+
+/** Ảnh chụp sân khấu tại một thời điểm: máy quay, tư thế và khung xương từng diễn viên, vị trí vật thể đang di chuyển. */
+export interface Stage {
+  setId: string;
+  setWidth: number;
+  t: number;
+  camera: View;
+  shot: { size: string; angle?: string; dof?: boolean };
+  actors: { id: string; pose: Pose; joints: Record<string, [number, number, number]>; head: [number, number, number]; torso: number[] }[];
+  offsets: Record<string, number>;
 }
 
 /** motionBlur: dựng thêm khung phụ trong màn trập 180° khi hình chuyển động nhanh (tắt ở bản nháp). */
@@ -49,6 +64,8 @@ export function createRenderer(spec: FilmSpec, timeline: Timeline, width: number
   const unit = height / wideHeight;
   const aspect = width / height;
   const views = new Map<number, [View, View]>();
+  // Khung 3D của khung hình đang vẽ, theo số thứ tự góc máy (góc máy hiện tại và góc máy trước khi đang hòa hình).
+  let plates = new Map<number, Image>();
   // Hạt phim và vignette tính sẵn một lần; mỗi khung chỉ còn hai lần phủ ảnh.
   const look = spec.options.look ?? {};
   const grains = Array.from({ length: (look.grain ?? 0.05) > 0 ? 4 : 0 }, (_, index) => {
@@ -326,7 +343,19 @@ export function createRenderer(spec: FilmSpec, timeline: Timeline, width: number
       ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
     }
     ctx.globalCompositeOperation = "source-over";
-    // Bloom: tách vùng rất sáng ở 1/4 độ phân giải, làm nhoè rồi cộng sáng lại — ánh sáng "loang" như qua ống kính thật.
+    bloom(set.time === "night" || set.time === "dusk" ? 0.45 : 0.28);
+    // Chỉnh màu lift–gain: đen nâng lên thành màu tối có sắc (không bao giờ đen kịt), vùng sáng nhuộm theo giờ.
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = palette.lift;
+    ctx.fillRect(0, 0, width, height);
+    ctx.globalCompositeOperation = "multiply";
+    ctx.fillStyle = palette.gain;
+    ctx.fillRect(0, 0, width, height);
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  /** Bloom: tách vùng rất sáng ở 1/4 độ phân giải, làm nhoè rồi cộng sáng lại — ánh sáng "loang" như qua ống kính thật. */
+  function bloom(strength: number) {
     smallCtx.resetTransform();
     smallCtx.clearRect(0, 0, small.width, small.height);
     smallCtx.filter = "brightness(0.7) contrast(5)";
@@ -338,17 +367,25 @@ export function createRenderer(spec: FilmSpec, timeline: Timeline, width: number
     blurredCtx.drawImage(small, 0, 0);
     blurredCtx.filter = "none";
     ctx.globalCompositeOperation = "screen";
-    ctx.globalAlpha = set.time === "night" || set.time === "dusk" ? 0.45 : 0.28;
+    ctx.globalAlpha = strength;
     ctx.imageSmoothingQuality = "medium";
     ctx.drawImage(blurred, 0, 0, width, height);
-    // Chỉnh màu lift–gain: đen nâng lên thành màu tối có sắc (không bao giờ đen kịt), vùng sáng nhuộm theo giờ.
     ctx.globalAlpha = 1;
-    ctx.fillStyle = palette.lift;
-    ctx.fillRect(0, 0, width, height);
-    ctx.globalCompositeOperation = "multiply";
-    ctx.fillStyle = palette.gain;
-    ctx.fillRect(0, 0, width, height);
     ctx.globalCompositeOperation = "source-over";
+  }
+
+  /**
+   * Khung 3D từ Blender (plate) thay cho cảnh vẽ 2D: ánh sáng và màu đã tính vật lý trong Cycles, ở đây chỉ phủ thời tiết
+   * (đom đóm, mưa...) và bloom ống kính; chuyển cảnh, phụ đề, hạt phim vẫn qua cùng một đường như bản 2D.
+   * ACT: tâm vòng iris giữ giữa khung với plate; muốn bám mặt nhân vật thì chiếu toạ độ đầu qua máy quay 3D.
+   */
+  function drawPlate(shot: CompiledShot, time: number, plate: Image) {
+    const set = timeline.scenes[shot.scene!]!.set;
+    ctx.resetTransform();
+    ctx.drawImage(plate, 0, 0, width, height);
+    focus = [width / 2, height / 2];
+    if (set.weather && set.weather !== "none") drawWeather(ctx, set.weather, width, height, time - timeline.scenes[shot.scene!]!.start, []);
+    bloom(set.time === "night" || set.time === "dusk" ? 0.3 : 0.18);
   }
 
   function wrap(text: string, maxWidth: number) {
@@ -447,7 +484,9 @@ export function createRenderer(spec: FilmSpec, timeline: Timeline, width: number
   }
 
   function drawRaw(shot: CompiledShot, time: number) {
+    const plate = plates.get(shot.index);
     if (shot.card) drawCard(shot, time);
+    else if (plate) drawPlate(shot, time, plate);
     else drawScene(shot, timeline.scenes[shot.scene!]!, time);
   }
 
@@ -517,6 +556,30 @@ export function createRenderer(spec: FilmSpec, timeline: Timeline, width: number
   return {
     canvas,
     shotAt,
+    usePlates(next) {
+      plates = next;
+    },
+    stage(time, chosen) {
+      const shot = chosen ?? shotAt(time);
+      if (shot.card || shot.scene === undefined) return undefined;
+      const scene = timeline.scenes[shot.scene]!;
+      const t = time - scene.start;
+      const current = poses(scene, t);
+      const camera = view(shot, scene, t, current);
+      const b = (id: string) => timeline.characters[id]!.body;
+      const actors = Object.entries(current).map(([id, pose]) => {
+        const { joints, headCenter, torso } = rig(timeline.characters[id]!, pose);
+        // Hệ toạ độ thân sau khi cúi/nghiêng/thở: gốc tại hông, ba trục x (trái), y (xuống), z (trước) — bộ dựng 3D đặt khối thân theo đó.
+        const origin = torso([0, b(id).hipY, 0]);
+        const axis = (p: [number, number, number]) => torso(p).map((value, index) => value - origin[index]!);
+        return {
+          id, pose, joints: joints as Record<string, [number, number, number]>, head: headCenter,
+          torso: [...origin, ...axis([1, b(id).hipY, 0]), ...axis([0, b(id).hipY - 1, 0]).map(value => -value), ...axis([0, b(id).hipY, 1])],
+        };
+      });
+      const offsets = Object.fromEntries((scene.set.elements ?? []).filter(element => element.id).map(element => [element.id!, elementOffset(scene, element.id!, t)]));
+      return { setId: scene.setId, setWidth: scene.set.width ?? defaultWidth, t, camera, shot: { size: shot.spec!.size, angle: shot.spec!.angle, dof: shot.spec!.dof }, actors, offsets };
+    },
     locate(id, time) {
       const shot = shotAt(time);
       if (shot.card) return undefined;
