@@ -6,12 +6,11 @@
 
 | README 语言 | 入口 |
 | --- | --- |
-| 简体中文 | [README](../README.md) |
+| Tiếng Việt | [README](../README.md) |
 | 繁體中文 | [README](./readme/readmeZhTw.md) |
 | English | [README](./readme/readmeEn.md) |
 | 日本語 | [README](./readme/readmeJa.md) |
 | Русский | [README](./readme/readmeRu.md) |
-| Tiếng Việt | [README](./readme/readmeVi.md) |
 | ไทย | [README](./readme/readmeTh.md) |
 | 한국어 | [README](./readme/readmeKo.md) |
 | हिन्दी | [README](./readme/readmeHi.md) |
@@ -28,7 +27,7 @@
 | فارسی | [README](./readme/readmeFa.md) |
 | Türkçe | [README](./readme/readmeTr.md) |
 
-项目介绍提供以上 21 种语言版本，与[应用支持的语言](../README.md#languages)保持一致。
+项目介绍提供以上 20 种语言版本；应用界面支持的语言见[语言列表](../README.md#languages)。
 
 ## 使用与开发
 

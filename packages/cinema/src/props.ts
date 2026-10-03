@@ -147,9 +147,26 @@ export function createProps(custom: Record<string, PropSpec>): Record<string, Pr
   const props = { ...builtIn };
   for (const [id, spec] of Object.entries(custom)) {
     const shape = new Path2D(spec.path);
-    props[id] = held(ctx => {
+    // ACT: tâm và bán kính quầng sáng ước từ các số trong path (đủ cho đạo cụ khép kín đơn giản).
+    const numbers = (spec.path.match(/-?\d*\.?\d+/g) ?? ["0", "0"]).map(Number);
+    const xs = numbers.filter((_, index) => index % 2 === 0);
+    const ys = numbers.filter((_, index) => index % 2 === 1);
+    const center: Point = [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2];
+    const size = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+    props[id] = held((ctx, _s, t) => {
       ctx.rotate(spec.angle ?? 0);
       ctx.scale(spec.scale ?? 1, spec.scale ?? 1);
+      if (spec.glow) {
+        // Đạo cụ phát sáng (đèn lồng, nến): quầng sáng cộng màu, chập chờn nhẹ.
+        const radius = size * (2.2 + Math.sin(t * 7) * 0.08);
+        const halo = ctx.createRadialGradient(center[0], center[1], 0, center[0], center[1], radius);
+        halo.addColorStop(0, spec.glow);
+        halo.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.globalCompositeOperation = "screen";
+        ctx.fillStyle = halo;
+        ctx.fillRect(center[0] - radius, center[1] - radius, radius * 2, radius * 2);
+        ctx.globalCompositeOperation = "source-over";
+      }
       ctx.fillStyle = spec.fill ?? "#cccccc";
       ctx.fill(shape);
       ctx.lineWidth = 2.5;

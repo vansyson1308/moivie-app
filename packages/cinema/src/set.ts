@@ -48,7 +48,7 @@ export const palettes: Record<TimeOfDay, Palette> = {
   noon: { sky: ["#3f87d4", "#88c2ef", "#cfe9fb"], haze: "#cfe3f1", tint: "#ffffff", tintAlpha: 0, dark: 0, sun: [0.55, -820, "#ffffff"] , lift: "#0a0f14", gain: "#ffffff" },
   golden: { sky: ["#5c6aa8", "#e79a6a", "#ffcf7d"], haze: "#f2bf8c", tint: "#ff9f43", tintAlpha: 0.22, dark: 0.05, sun: [0.25, -300, "#ffd98a"] , lift: "#2a1828", gain: "#ffe8c4" },
   dusk: { sky: ["#232650", "#9a4f78", "#ec8a62"], haze: "#b07386", tint: "#8a4fb0", tintAlpha: 0.2, dark: 0.22, sun: [0.15, -170, "#ffb07a"] , lift: "#1c1638", gain: "#ffdccc" },
-  night: { sky: ["#070b1f", "#14204a", "#2a3a6c"], haze: "#25345e", tint: "#2a3f8f", tintAlpha: 0.42, dark: 0.45, sun: [0.75, -760, "#f4f1de"] , lift: "#06142a", gain: "#cfdcff" },
+  night: { sky: ["#070b1f", "#14204a", "#2a3a6c"], haze: "#25345e", tint: "#2a3f8f", tintAlpha: 0.34, dark: 0.34, sun: [0.75, -760, "#f4f1de"] , lift: "#06142a", gain: "#cfdcff" },
   overcast: { sky: ["#7f8b98", "#a9b3bd", "#cdd3d9"], haze: "#b9c1c8", tint: "#9aa7b4", tintAlpha: 0.15, dark: 0.12, lift: "#182028", gain: "#eef2f6" },
 };
 
