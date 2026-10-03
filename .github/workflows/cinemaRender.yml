@@ -128,7 +128,9 @@ jobs:
       - name: Dựng phần ${{ matrix.shard }}
         # Giọng đã thu ở bước plan nằm trong bộ nhớ đệm: không cần cài lại VieNeu.
         run: bun packages/cinema/cli.ts render "$film" --engine 3d --voice vieneu --python python3 --shard "${{ matrix.shard }}/$shards" $quality $shots
+      # Dịch vụ artifact của GitHub đôi khi quá hạn: không làm đỏ máy dựng, bước ghép sẽ tự dựng bù phần thiếu.
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: plates${{ matrix.shard }}
           path: ${{ needs.plan.outputs.directory }}/build/plates
@@ -138,8 +140,10 @@ jobs:
   assemble:
     name: Ghép phim
     needs: [plan, render]
+    # Vẫn ghép khi vài máy dựng lỗi: khung còn thiếu được dựng bù ngay tại đây.
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
         with:

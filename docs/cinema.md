@@ -126,6 +126,12 @@ Phim mẫu thứ hai *Đèn Trung Thu* là cảnh đêm có đèn ông sao phát
 - dựng bản cuối mất 1 phút 44 giây;
 - số khung 1408/1408, −18,4 LUFS.
 
+Bản 3D của *Đèn Trung Thu* dựng trên render farm GitHub Actions ([vansyson1308/moivie-app#3](https://github.com/vansyson1308/moivie-app/pull/3)):
+- khổ 1920×804, chất lượng cuối có nhoè chuyển động, 1400/1400 khung, lồng tiếng VieNeu;
+- chia cho 20 máy 4 nhân theo phần 36 khung, mỗi khung khoảng 80 giây CPU;
+- từ lúc đẩy mã đến lúc có phim mất khoảng 2 giờ 20 phút (chưa tính lần chạy lại vì dịch vụ artifact của GitHub quá hạn);
+- bước ghép lớp, phụ đề và âm thanh mất 59 giây.
+
 Đầu ra gồm:
 
 - Video H.264 (1080p hoặc 4K, các khổ 16:9, 2,39:1, 1,85:1, dọc, vuông).
