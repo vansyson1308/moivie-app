@@ -168,8 +168,13 @@ function reach(pose: Pose, side: "left" | "right", target: Limb, k: number, hand
 const expressionPosture: Partial<Record<Expression, (pose: Pose) => void>> = {
   sad: pose => { pose.headPitch -= 0.16; pose.lean += 0.04; },
   angry: pose => { pose.lean += 0.05; pose.headPitch -= 0.06; pose.hands.left = pose.hands.left === "relaxed" ? "fist" : pose.hands.left; pose.hands.right = pose.hands.right === "relaxed" ? "fist" : pose.hands.right; },
-  surprised: pose => { pose.headPitch += 0.08; const side = nearSide(pose.yaw); reach(pose, side, limb(0.5, 1.1, 0.15), 0.6, "open"); },
-  scared: pose => { pose.headPitch -= 0.05; reach(pose, "left", limb(0.7, 1.5, -0.15), 0.9, "open"); reach(pose, "right", limb(0.7, 1.5, -0.15), 0.9, "open"); pose.lean -= 0.05; },
+  // Tay đang cầm đồ vật thì giữ nguyên, không để cảm xúc kéo đồ vật lên che mặt.
+  surprised: pose => { pose.headPitch += 0.08; const side = nearSide(pose.yaw); if (!pose.hold[side]) reach(pose, side, limb(0.5, 1.1, 0.15), 0.6, "open"); },
+  scared: pose => {
+    pose.headPitch -= 0.05;
+    for (const side of ["left", "right"] as const) if (!pose.hold[side]) reach(pose, side, limb(0.7, 1.5, -0.15), 0.9, "open");
+    pose.lean -= 0.05;
+  },
   thinking: pose => { pose.headPitch += 0.06; pose.headRoll += 0.05; },
   tender: pose => { pose.headRoll += 0.07; pose.headPitch -= 0.04; },
 };
@@ -249,8 +254,9 @@ export function poseAt(character: Character, state: CharacterState, actions: Tim
       // Đầu quay trước thân một nhịp, vai nhún nhẹ.
       pose.headYaw = angleDelta(pose.yaw, angleLerp(action.from.yaw, action.to.yaw, smooth(p * 1.6))) * 0.8;
       pose.bob += bell(p) * 2 * character.scale;
+      // Đứng thì nhấc chân bước theo vòng quay; đang ngồi/quỳ thì giữ nguyên chân.
       const step = bell(p);
-      pose.legs.left = limb(0.12 * step, -0.25 * step, 0.03);
+      if (action.from.posture === "stand") pose.legs.left = limb(0.12 * step, -0.25 * step, 0.03);
     } else {
       pose = from;
       const e = bell(p);

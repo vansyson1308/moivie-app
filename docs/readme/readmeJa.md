@@ -15,12 +15,11 @@
 </p>
 
 <p align="center">
-  <a href="../../README.md">简体中文</a> |
+  <a href="../../README.md">Tiếng Việt</a> |
   <a href="./readmeZhTw.md">繁體中文</a> |
   <a href="./readmeEn.md">English</a> |
   <strong>日本語</strong> |
   <a href="./readmeRu.md">Русский</a> |
-  <a href="./readmeVi.md">Tiếng Việt</a> |
   <a href="./readmeTh.md">ไทย</a>
   <br />
   <a href="./readmeKo.md">한국어</a> |
